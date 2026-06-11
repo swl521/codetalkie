@@ -1,0 +1,116 @@
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { driveCli, claudeArgs, codexArgs } from './driver.js';
+import { normalizeClaudeMessage } from './normalize.js';
+import { normalizeCodexMessage } from './normalizeCodex.js';
+import { Pipeline } from './pipeline.js';
+import { SilenceMonitor } from './monitor.js';
+import { speak } from './speaker.js';
+import { SessionStore } from './sessions.js';
+import { EVENT } from './events.js';
+import { makePushSink } from './pushSink.js';
+
+// 无头认证:~/.earpiece/oauth-token 存 claude setup-token 生成的长期令牌
+export function loadAuthEnv() {
+  try {
+    const token = readFileSync(join(homedir(), '.earpiece', 'oauth-token'), 'utf8').trim();
+    if (token) return { CLAUDE_CODE_OAUTH_TOKEN: token };
+  } catch { /* 没有 token 文件就用默认认证 */ }
+  return undefined;
+}
+
+// 跑一个任务直到结束:驾驶 CLI → 管线 → say/APNs。返回最终状态。
+// main.js(命令行)和 daemon.js(常驻)共用。
+// agent: 'claude'(默认)| 'codex' — 决定 bin、参数形态、归一器、env。
+export function runTask({
+  project, prompt, cwd = process.cwd(), level = 3,
+  silent = false, fresh = false, push = null,
+  agent = 'claude', bin = agent === 'codex' ? 'codex' : 'claude',
+  approval = null, // { daemonUrl, token, mcpPath }:权限请求经 approval-mcp 转给手机批准(仅 claude)
+  onSpoken = null, // 每句播报后回调(字幕回放用)
+  log = console.log,
+}) {
+  // 每个 agent 一套"参数函数 + 归一器 + 默认 bin"。bin 被换掉时走回放路径(只传 prompt)。
+  const profile = agent === 'codex'
+    ? { defaultBin: 'codex', makeArgs: codexArgs, normalize: normalizeCodexMessage }
+    : { defaultBin: 'claude', makeArgs: claudeArgs, normalize: normalizeClaudeMessage };
+  // 会话 key:codex 加前缀隔离,避免与同项目的 claude 会话串号;claude 不加,向后兼容旧档案。
+  const sessionProject = agent === 'codex' ? `codex:${project}` : project;
+
+  const pushSink = push ? makePushSink(JSON.parse(readFileSync(push, 'utf8'))) : null;
+  const sessions = new SessionStore(join(homedir(), '.earpiece', 'sessions.json'));
+  const resume = fresh ? undefined : sessions.get(sessionProject, cwd);
+
+  const pipeline = new Pipeline({ project, level });
+  const monitor = new SilenceMonitor();
+  let speaking = false;
+  let cliDone = false;
+
+  return new Promise((resolve) => {
+    async function drain() {
+      if (speaking) return;
+      speaking = true;
+      for (let item = pipeline.queue.next(); item; item = pipeline.queue.next()) {
+        const pushing = pushSink ? pushSink(item) : null; // 推手机与本机播报并行
+        await speak(item, { silent });
+        if (pushing) await pushing;
+        try { onSpoken?.(item); } catch { /* 字幕失败不影响播报 */ }
+        monitor.noteSpoken(Date.now());
+      }
+      speaking = false;
+      if (cliDone && pipeline.queue.size === 0) {
+        clearInterval(timer);
+        resolve(pipeline.state);
+      }
+    }
+
+    const timer = setInterval(() => {
+      for (const e of monitor.tick(Date.now())) pipeline.ingest(e);
+      drain();
+    }, 1000);
+
+    let args = bin === profile.defaultBin ? profile.makeArgs(prompt, { resume }) : [prompt];
+    if (approval && agent === 'claude' && bin === 'claude') {
+      const mcpConfig = {
+        mcpServers: {
+          approval: {
+            command: process.execPath,
+            args: [approval.mcpPath],
+            env: { EARPIECE_DAEMON: approval.daemonUrl, EARPIECE_TOKEN: approval.token },
+          },
+        },
+      };
+      args = [...args, '--permission-prompt-tool', 'mcp__approval__approve', '--mcp-config', JSON.stringify(mcpConfig)];
+    }
+
+    log(`▶ [${project}]${agent === 'codex' ? ' agent=codex' : ''} level=${level} cwd=${cwd}${resume ? ` resume=${resume}` : ''}${approval ? ' approval=on' : ''}`);
+    driveCli({
+      bin,
+      args,
+      cwd,
+      // codex 不注入 CLAUDE_CODE_OAUTH_TOKEN(用自己的 ~/.codex/auth.json)
+      env: agent === 'claude' && bin === 'claude' ? loadAuthEnv() : undefined,
+      onMessage: (msg) => {
+        for (const e of profile.normalize(msg)) {
+          if (e.type === EVENT.SESSION_STARTED && e.sessionId) {
+            sessions.set(sessionProject, cwd, e.sessionId); // 记链头,下次同项目+目录自动续
+          }
+          monitor.noteEvent(Date.now(), e);
+          pipeline.ingest(e);
+        }
+        drain();
+      },
+      onExit: (code, stderr = '') => {
+        // 会话档案失效(被删/换目录遗留)→ 清掉,下次自动新开
+        if (resume && stderr.includes('No conversation found')) {
+          sessions.clear(sessionProject, cwd);
+          log(`⚠ 会话 ${resume} 已失效,已清除,重说一次即可`);
+        }
+        cliDone = true;
+        log(`◀ CLI 退出 code=${code} 状态=${pipeline.state}`);
+        drain();
+      },
+    });
+  });
+}

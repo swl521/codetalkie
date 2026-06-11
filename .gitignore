@@ -1,0 +1,6 @@
+node_modules/
+.DS_Store
+spike/AuthKey_*.p8
+spike/apns.json
+spike/ios/build/
+spike/ios/EarpieceConfig.swift

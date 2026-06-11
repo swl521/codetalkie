@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- 菜单栏应用:不显示 Dock 图标 -->
+	<key>LSUIElement</key>
+	<true/>
+	<!-- 允许访问 127.0.0.1 的 http 服务(daemon) -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<!-- AppleScript 控制 Terminal 需要的用途说明(首次使用会弹授权) -->
+	<key>NSAppleEventsUsageDescription</key>
+	<string>用于在 Terminal 中打开并恢复 Claude CLI 会话。</string>
+</dict>
+</plist>
