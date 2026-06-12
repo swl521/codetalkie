@@ -11,6 +11,7 @@ import { speak } from './speaker.js';
 import { SessionStore } from './sessions.js';
 import { EVENT } from './events.js';
 import { makePushSink } from './pushSink.js';
+import { latestCodexSessionId } from './scanProjects.js';
 
 // 无头认证:~/.earpiece/oauth-token 存 claude setup-token 生成的长期令牌
 export function loadAuthEnv() {
@@ -24,11 +25,11 @@ export function loadAuthEnv() {
 // 跑一个任务直到结束:驾驶 CLI → 管线 → say/APNs。返回最终状态。
 // main.js(命令行)和 daemon.js(常驻)共用。
 // agent: 'claude'(默认)| 'codex' — 决定 bin、参数形态、归一器、env。
-// resume 句柄解析:hermes 会话项目用 resumeId(来自 `hermes sessions list` 的 ID,不归
-// SessionStore 管);其他引擎用 SessionStore 里记的链头。fresh 一律不续。
+// resume 句柄解析:hermes 用会话列表的 ID;codex 用"该目录最新落盘会话"(终端 TUI
+// 和手机无头落同一处,resume 它 = 真同一个会话);claude 用 SessionStore 链头。fresh 一律不续。
 export function pickResume({ agent, resumeId, fresh, sessionResume }) {
   if (fresh) return undefined;
-  if (agent === 'hermes' && resumeId) return resumeId;
+  if ((agent === 'hermes' || agent === 'codex') && resumeId) return resumeId;
   return sessionResume;
 }
 
@@ -52,7 +53,9 @@ export function runTask({
 
   const pushSink = push ? makePushSink(JSON.parse(readFileSync(push, 'utf8'))) : null;
   const sessions = new SessionStore(join(homedir(), '.earpiece', 'sessions.json'));
-  const resume = pickResume({ agent, resumeId, fresh, sessionResume: sessions.get(sessionProject, cwd) });
+  // codex:没显式 resumeId 就接"该目录最新落盘会话"——你在终端 TUI 聊的也算,同一个会话
+  const effectiveResumeId = resumeId ?? (agent === 'codex' ? latestCodexSessionId(cwd) : null);
+  const resume = pickResume({ agent, resumeId: effectiveResumeId, fresh, sessionResume: sessions.get(sessionProject, cwd) });
 
   const pipeline = new Pipeline({ project, level });
   const monitor = new SilenceMonitor();

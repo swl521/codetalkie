@@ -1,10 +1,10 @@
 # Agent Earpiece — 产品进度
 
-> 更新:2026-06-11 深夜 · 上一版:2026-06-10 产品讨论全文档
+> 更新:2026-06-12 凌晨 · 上一版:2026-06-11 深夜
 
 ## 一句话状态
 
-**🌍 公网开通(2026-06-11):relay=https://your-relay.example.com(Cloudflare Worker+DO),手机任何网络可用,Mac 出站长轮询免开端口。三管道全通(2026-06-11):下行(电脑→耳机)+ 上行(说话→电脑)+ 批准环(它问你批)全部用户实测成立。产品能聊、能干、有刹车。**
+**📱📱 双端三机三引擎(2026-06-12):iOS + Android(华为真机)双客户端;Mac/Win/Linux 三机按项目名路由;Claude/Codex/Hermes 三引擎。手机和电脑窗口是同一个对话(agent-hub 桥 + hook 同步);Codex 手机/终端 resume 同一条会话;Android 带微软云端神经语音(晓晓)。产品能聊、能干、有刹车,还有副好嗓子。**
 
 批准桥接:`--permission-prompt-tool` → approval-mcp(stdio MCP)→ daemon 挂起 → Mac 播报 + 手机推送(批准/拒绝按钮)
 → 或语音"告诉小易批准"(不带 id 命中最新挂起);120s 超时自动拒绝(已实测);拒绝路径 Claude 优雅收场(已实测);
@@ -28,6 +28,14 @@ Codex 驱动(`--agent codex`,0.139.0 实测,resume 顺序确认)、App 图标、
 | 06-11 | 无头认证方案落地:`claude setup-token` 长期令牌 → `~/.earpiece/oauth-token`,Agent 自动注入(onboarding 流程原型) |
 | 06-11 | .p8 到位(KeyID XXXXXXXXXX),APNs 首推 200;push sink 接入管线(`--push`) |
 | 06-11 | **🎉 产品完整闭环**:真任务(写诗)全程推送锁屏 iPhone,Siri AirPods 朗读 |
+| 06-11 | 多机路由(relay 按机器分信箱)+ Windows 移植 + Hermes 引擎接入;三机四引擎全通 |
+| 06-11 | Hermes 会话即项目(扫描/过滤/--resume 路由)+ 历史回填(export);iOS 引擎分组可折叠 |
+| 06-12 | 历史回填 10→50 条;**seed/现场行分离**(回填不再冲掉手机消息,"发了没显示"根因修复) |
+| 06-12 | **手机↔电脑同一个对话**:agent-hub 桥(daemon 注入活终端)+ window-listener(桌面窗口接指令)+ phone-sync hook(手机消息进窗口),全链路实测 |
+| 06-12 | **Codex 同会话**:手机 resume 该目录最新落盘会话(终端 TUI 同链);attach.mjs 终端接回手机链 |
+| 06-12 | **📱 Android 版真机落地**(华为):Kotlin+Compose 全套,前台轮询+TTS,Mac 全新工具链编译装机;weixin 重名 key 崩溃修复(同族 bug 第三案) |
+| 06-12 | **Android 双语音引擎**:微软 Edge 云端神经语音(免费无 key,晓晓/云希等 6 音色,Sec-MS-GEC 签名)+ 系统 TTS 音色选择,点选即试听 |
+| 06-11 | 开源库 codetalkie 同步(脱敏:域名/bundle/TeamID/KeyID/路径全替换,relay 与密钥排除) |
 
 ## 已验证(降为零风险)
 
@@ -70,6 +78,6 @@ Codex 驱动(`--agent codex`,0.139.0 实测,resume 顺序确认)、App 图标、
 ## 下一步(优先级序)
 
 1. 户外真实场景实测(蜂窝网络 + AirPods + 跑步)——产品定义场景的最终检验
-2. daemon 转 LaunchAgent 常驻 + 装菜单栏 App(脚本/产物已备)
-3. onboarding 打磨(自检 401→引导 setup-token;通知/麦克风授权引导)
-4. Codex app-server 批准(二期);Watch 扩展(二期)
+2. Android 二期:FCM 推送(省电息屏版,需用户 Firebase 项目)、语音输入、Siri 对位(快捷指令)
+3. Hermes 二期:经批准环投递到飞书等真人渠道(现为只读,绝不自动发真人)
+4. onboarding 打磨;APNs 移入 relay(.p8 单点);Codex app-server 批准(二期);Watch 扩展(二期)

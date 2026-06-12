@@ -88,6 +88,19 @@ export function scanCodex(root = join(homedir(), '.codex', 'sessions'), maxFiles
   return [...out].map(([cwd, v]) => ({ cwd, agent: 'codex', base: basename(cwd), lastActive: v.lastActive, file: v.file }));
 }
 
+// rollout 文件名尾部的 uuid 就是 codex session id(与首行 session_meta.payload.id 一致,实测)。
+const CODEX_ID_RE = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i;
+export function codexSessionIdFromFile(file) {
+  return CODEX_ID_RE.exec(file ?? '')?.[1] ?? null;
+}
+
+// 该目录最新一条 codex 会话(终端 TUI 聊的和手机无头跑的都落盘在同一处)——
+// 手机指令 resume 它,就和你在终端聊的是同一个会话。
+export function latestCodexSessionId(cwd, root) {
+  const hit = scanCodex(root).find((e) => e.cwd === cwd);
+  return hit ? codexSessionIdFromFile(hit.file) : null;
+}
+
 // Hermes:没有项目目录,单位是会话。每个会话 = 一个只读项目(摆出来,不主动发消息)。
 // 会话句柄用 `hermes sessions list` 输出里每行最后一个 token(ID),不是文件名(对不上)。
 const HERMES_ID_RE = /(\d{8}_\d{6}_\w+|cron_\S+)\s*$/;

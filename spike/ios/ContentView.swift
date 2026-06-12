@@ -17,10 +17,12 @@ struct DaemonStatus: Equatable {
 
 // 电脑上扫出来的现成项目(只读;唯一可改的是叫法)
 struct RegEntry: Identifiable, Equatable {
-    var id: String { "\(agent)@\(cwd)" }
+    // name 入 id:hermes 多个会话共用同一 cwd(~/.hermes),只用 agent@cwd 会三条同 id,
+    // SwiftUI ForEach 把第一条渲染三遍。注册表保证 name 唯一(撞名会 needsRename),用它去重。
+    var id: String { "\(agent)@\(cwd)@\(name)" }
     let name: String
     let cwd: String
-    let agent: String   // claude | codex
+    let agent: String   // claude | codex | hermes
     let base: String
     let machine: String // 项目所在电脑(Mac / Win …)
     let needsRename: Bool
@@ -48,14 +50,65 @@ enum API {
     }
 }
 
+// 全局刷新总线:Tab 栏右侧的刷新按钮拨一下 tick,各页面监听后自己拉数据。
+// activeChat 记录当前打开的对话页:在对话页里只刷那个会话,在主页才全量刷新。
+final class RefreshBus: ObservableObject {
+    @Published var tick = 0
+    @Published var spinning = false
+    @Published var activeChat: String? = nil
+}
+
 struct ContentView: View {
+    @StateObject private var bus = RefreshBus()
+    @State private var tab = 0
+
     var body: some View {
-        TabView {
-            HomeView()
-                .tabItem { Label("主页", systemImage: "house.fill") }
-            SettingsView()
-                .tabItem { Label("设置", systemImage: "gearshape.fill") }
+        VStack(spacing: 0) {
+            // ZStack 保活两个页面(切走不销毁,轮询继续)
+            ZStack {
+                HomeView().opacity(tab == 0 ? 1 : 0).allowsHitTesting(tab == 0)
+                SettingsView().opacity(tab == 1 ? 1 : 0).allowsHitTesting(tab == 1)
+            }
+            navigationBar
         }
+        .environmentObject(bus)
+    }
+
+    // Material 3 Navigation Bar(design.google):三项均分、选中项胶囊高亮、图标上文字下
+    private var navigationBar: some View {
+        HStack(spacing: 0) {
+            navItem(icon: "house.fill", label: "主页", selected: tab == 0) { tab = 0 }
+            navItem(icon: "gearshape.fill", label: "设置", selected: tab == 1) { tab = 1 }
+            navItem(icon: "arrow.clockwise", label: "刷新", selected: false, spinning: bus.spinning) { bus.tick += 1 }
+        }
+        .padding(.top, 10)
+        .padding(.bottom, 6)
+        .background(.bar)
+        .overlay(alignment: .top) { Divider() }
+    }
+
+    private func navItem(icon: String, label: String, selected: Bool,
+                         spinning: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                ZStack {
+                    // M3 active indicator:选中项图标垫一个胶囊
+                    Capsule()
+                        .fill(selected ? Color.accentColor.opacity(0.16) : .clear)
+                        .frame(width: 56, height: 30)
+                    Image(systemName: icon)
+                        .font(.system(size: 17, weight: .medium))
+                        .rotationEffect(.degrees(spinning ? 360 : 0))
+                        .animation(spinning ? .linear(duration: 0.8).repeatForever(autoreverses: false) : .default, value: spinning)
+                }
+                Text(label)
+                    .font(.system(size: 11, weight: selected ? .semibold : .regular))
+            }
+            .foregroundStyle(selected || spinning ? Color.accentColor : Color(.secondaryLabel))
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -66,7 +119,6 @@ struct HomeView: View {
     @AppStorage("didAskName") private var didAskName = false  // 只在装好后第一次运行问名字
     @State private var nameDraft = ""
     @State private var naming = false
-    @State private var refreshing = false
 
     @State private var status = DaemonStatus()
     @State private var registry: [RegEntry] = []
@@ -75,6 +127,7 @@ struct HomeView: View {
     @State private var renameDraft = ""
     @State private var toast = ""
     @State private var collapsed: Set<String> = []  // 折叠起来的引擎分组(claude/codex/hermes)
+    @EnvironmentObject private var bus: RefreshBus  // Tab 栏刷新按钮
 
     @StateObject private var speech = SpeechInput()
     @State private var micTarget: String? = nil  // 正在按住录音的目标项目;nil=主页大麦克风(需自己报项目名)
@@ -103,17 +156,6 @@ struct HomeView: View {
             .background(Color(.systemGroupedBackground))
             .navigationTitle(displayName)
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        Task { refreshing = true; await refreshAll(); refreshing = false }
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                            .rotationEffect(.degrees(refreshing ? 360 : 0))
-                            .animation(refreshing ? .linear(duration: 0.8).repeatForever(autoreverses: false) : .default, value: refreshing)
-                    }
-                }
-            }
         }
         .task {
             EarpieceShortcuts.updateAppShortcutParameters()
@@ -121,6 +163,10 @@ struct HomeView: View {
             await refreshAll()
         }
         .onReceive(pollTimer) { _ in Task { await refreshAll() } }
+        .onChange(of: bus.tick) { _ in
+            guard bus.activeChat == nil else { return }  // 对话页开着时由对话页自己刷
+            Task { bus.spinning = true; await refreshAll(); bus.spinning = false }
+        }
         .onChange(of: speech.recording) { rec in
             if !rec {
                 let said = speech.transcript.trimmingCharacters(in: .whitespaces)
@@ -230,21 +276,24 @@ struct HomeView: View {
                     let accent: Color = agent == "claude" ? .orange : agent == "codex" ? .green : .purple
                     let label = agent == "claude" ? "Claude" : agent == "codex" ? "Codex" : "Hermes"
                     let isCollapsed = collapsed.contains(agent)
-                    // 引擎标题:点一下折叠/展开这一组
+                    // 引擎标题:整行可点,折叠/展开这一组
                     Button {
-                        withAnimation(.easeInOut(duration: 0.18)) {
+                        withAnimation(.easeInOut(duration: 0.2)) {
                             if isCollapsed { collapsed.remove(agent) } else { collapsed.insert(agent) }
                         }
                     } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "chevron.right")
-                                .font(.caption2).bold()
-                                .rotationEffect(.degrees(isCollapsed ? 0 : 90))
+                        HStack {
                             Text("\(label) · \(group.count)").font(.subheadline).bold()
+                                .padding(.horizontal, 10).padding(.vertical, 3)
+                                .background(accent.opacity(0.15), in: Capsule())
+                                .foregroundStyle(accent)
+                            Spacer()
+                            Image(systemName: "chevron.down")
+                                .font(.caption).bold()
+                                .foregroundStyle(.secondary)
+                                .rotationEffect(.degrees(isCollapsed ? -90 : 0))
                         }
-                        .padding(.horizontal, 10).padding(.vertical, 3)
-                        .background(accent.opacity(0.15), in: Capsule())
-                        .foregroundStyle(accent)
+                        .contentShape(Rectangle())   // 整行都能点
                     }
                     .buttonStyle(.plain)
                     .padding(.top, 8)

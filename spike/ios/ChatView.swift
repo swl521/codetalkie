@@ -17,6 +17,7 @@ struct ChatView: View {
     @State private var draft = ""
     @State private var sendResult = ""
     @StateObject private var speech = SpeechInput()
+    @EnvironmentObject private var bus: RefreshBus  // Tab 栏刷新按钮
     private let pollTimer = Timer.publish(every: 4, on: .main, in: .common).autoconnect()
 
     var body: some View {
@@ -36,10 +37,28 @@ struct ChatView: View {
             }
             inputBar
         }
-        .navigationTitle(project)
         .navigationBarTitleDisplayMode(.inline)
+        // 标题下带 Siri 召唤语提示(总忘记怎么说):照着念就能锁屏驱动这个项目
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                VStack(spacing: 1) {
+                    Text(project).font(.headline)
+                    Text("🎙 \"嘿 Siri,告诉小易\" → \"\(project) + 要做的事\"")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+            }
+        }
         .task { await refresh() }
         .onReceive(pollTimer) { _ in Task { await refresh() } }
+        .onAppear { bus.activeChat = project }
+        .onDisappear { if bus.activeChat == project { bus.activeChat = nil } }
+        .onChange(of: bus.tick) { _ in
+            guard bus.activeChat == project else { return }  // 只有自己在前台才响应
+            Task { bus.spinning = true; await refresh(); bus.spinning = false }
+        }
         .onChange(of: speech.recording) { rec in
             if !rec {
                 let said = speech.transcript.trimmingCharacters(in: .whitespaces)

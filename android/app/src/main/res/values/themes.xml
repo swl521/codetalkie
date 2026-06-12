@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Compose 自绘 UI,这里只要一个无 ActionBar 的系统主题壳 -->
+    <style name="Theme.CodeTalkie" parent="android:Theme.Material.NoActionBar" />
+</resources>

@@ -15,6 +15,7 @@ import { speak } from './speaker.js';
 import { buildPayload, sendPush } from './apns.js';
 import { scanClaude, scanCodex, scanHermesSessions, exportHermesSession, parseHermesHistory } from './scanProjects.js';
 import { buildRegistry, resolveSpoken, saveAlias, loadAliases } from './registry.js';
+import { findHubSession, runViaHub } from './hubBridge.js';
 import { extractTail } from './transcriptTail.js';
 
 // 纯逻辑核心,可注入假 runner / announce 测试
@@ -278,6 +279,15 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
 
   const daemon = createDaemon({
     token, projects, announce, logLine, notify,
+    // 桥优先:claude 项目若本机有"同目录的活终端窗口"(agent-hub),指令注入那个窗口
+    // —— 手机和电脑前是同一个对话。注入失败(没终端/端口死)才退回无头分身。
+    runner: async (job) => {
+      if (!job.agent || job.agent === 'claude') {
+        const hub = findHubSession(job.cwd);
+        if (hub && await runViaHub(job, hub, { notify, logLine })) return;
+      }
+      return runTask(job);
+    },
     defaults: {
       ...defaults,
       // 每句播报顺手记进字幕(assistant 气泡)
@@ -322,12 +332,17 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const seededMtime = new Map(); // 项目名 → 上次回填用的档案 mtime
   async function pushHistory(name, tail) {
     if (!tail.length) return;
+    // 现场行(手机指令/实时播报,不带 src:'seed')必须保留 —— 档案一变就整段重建的话,
+    // 会把用户刚发的消息和回复一起冲掉("发了但看不到"就是这么来的)。只换回填部分。
+    const existing = await relayApi.get(`/history?project=${encodeURIComponent(name)}`).catch(() => []);
+    const live = (Array.isArray(existing) ? existing : []).filter((l) => l.src !== 'seed');
     const baseTs = Date.now() - tail.length * 1000;
     await relayApi.del(`/history?project=${encodeURIComponent(name)}`);
-    await relayApi.log({ project: name, role: 'event', text: '↻ 电脑上的最近记录', ts: baseTs - 1000 });
+    await relayApi.log({ project: name, role: 'event', text: '↻ 电脑上的最近记录', ts: baseTs - 1000, src: 'seed' });
     for (let i = 0; i < tail.length; i++) {
-      await relayApi.log({ project: name, ...tail[i], ts: baseTs + i * 1000 });
+      await relayApi.log({ project: name, ...tail[i], ts: baseTs + i * 1000, src: 'seed' });
     }
+    for (const l of live) await relayApi.log({ project: name, ...l }); // 原 ts 重放
   }
   async function refreshHistories() {
     if (!relayApi) return;
@@ -336,7 +351,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
       if (e.agent === 'hermes' && e.sessionId) {
         const obj = exportHermesSession(e.sessionId);
         if (!obj) continue;
-        const { sig, lines } = parseHermesHistory(obj, 10);
+        const { sig, lines } = parseHermesHistory(obj, 50);
         if (seededMtime.get(e.name) === sig) continue;
         seededMtime.set(e.name, sig);
         await pushHistory(e.name, lines);
@@ -346,7 +361,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
       let mtime = 0;
       try { mtime = statSync(e.file).mtimeMs; } catch { continue; }
       if (seededMtime.get(e.name) === mtime) continue; // 没变化,跳过
-      const tail = extractTail(e.file, 10);
+      const tail = extractTail(e.file, 50);
       seededMtime.set(e.name, mtime);
       await pushHistory(e.name, tail);
     }
