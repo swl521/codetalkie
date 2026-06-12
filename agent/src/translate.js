@@ -42,7 +42,7 @@ export function summarizeToolRequest(tool, input = {}) {
 // 归一事件 → 不带项目名前缀的裸播报句
 export function toSpeech(event) {
   switch (event.type) {
-    case EVENT.SESSION_STARTED: return '开始干活了';
+    case EVENT.SESSION_STARTED: return ''; // 不播"开始干活了";开工提示改由 daemon 收到指令时回显任务
     case EVENT.PROGRESS_TEXT: return clip(event.text);
     case EVENT.TOOL_STARTED: return `正在${toolLabel(event.tool) ?? '干一步'}`;
     case EVENT.TOOL_FINISHED: {

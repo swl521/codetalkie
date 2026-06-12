@@ -15,6 +15,7 @@
 		A00000000000000000000006 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000008 /* Assets.xcassets */; };
 		A00000000000000000000007 /* SpeechInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000009 /* SpeechInput.swift */; };
 		A00000000000000000000008 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000010 /* ChatView.swift */; };
+		A00000000000000000000009 /* LANDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000011 /* LANDiscovery.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -28,6 +29,7 @@
 		B00000000000000000000008 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B00000000000000000000009 /* SpeechInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechInput.swift; sourceTree = "<group>"; };
 		B00000000000000000000010 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
+		B00000000000000000000011 /* LANDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LANDiscovery.swift; sourceTree = "<group>"; };
 		C00000000000000000000001 /* EarpieceSpike.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = EarpieceSpike.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -52,6 +54,7 @@
 				B00000000000000000000006 /* EarpieceConfig.swift */,
 				B00000000000000000000009 /* SpeechInput.swift */,
 				B00000000000000000000010 /* ChatView.swift */,
+				B00000000000000000000011 /* LANDiscovery.swift */,
 				B00000000000000000000004 /* EarpieceSpike.entitlements */,
 				B00000000000000000000007 /* Info.plist */,
 				B00000000000000000000008 /* Assets.xcassets */,
@@ -132,6 +135,7 @@
 				A00000000000000000000005 /* EarpieceConfig.swift in Sources */,
 				A00000000000000000000007 /* SpeechInput.swift in Sources */,
 				A00000000000000000000008 /* ChatView.swift in Sources */,
+				A00000000000000000000009 /* LANDiscovery.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

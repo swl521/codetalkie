@@ -12,13 +12,16 @@ final class SpeechInput: ObservableObject {
     private var task: SFSpeechRecognitionTask?
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private let engine = AVAudioEngine()
+    private var stopRequested = false   // 按住说话:若在引擎启动前就松手,引擎一起来立刻收尾
 
     func toggle() {
         recording ? stop() : start()
     }
 
-    private func start() {
+    // 按住开录(列表行小麦克风用):权限就绪后开录,松手调 stop()
+    func start() {
         transcript = ""
+        stopRequested = false
         SFSpeechRecognizer.requestAuthorization { auth in
             guard auth == .authorized else {
                 Task { @MainActor in self.denied = true }
@@ -50,6 +53,7 @@ final class SpeechInput: ObservableObject {
         engine.prepare()
         guard (try? engine.start()) != nil else { return }
         recording = true
+        if stopRequested { stop(); return }   // 引擎启动前就松手了,立即收尾
 
         task = recognizer?.recognitionTask(with: req) { [weak self] result, error in
             Task { @MainActor in
@@ -61,6 +65,7 @@ final class SpeechInput: ObservableObject {
     }
 
     func stop() {
+        stopRequested = true   // 若引擎尚未起来,begin() 起来后会据此立即收尾
         request?.endAudio()
         teardown()
     }

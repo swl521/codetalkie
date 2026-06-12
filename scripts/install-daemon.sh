@@ -4,7 +4,7 @@
 set -euo pipefail
 
 LABEL="com.earpiece.daemon"
-DAEMON_JS="/Volumes/2nd/build/claude-remo-app/agent/src/daemon.js"
+DAEMON_JS="$HOME/codetalkie/agent/src/daemon.js"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 LOG_DIR="$HOME/.earpiece"
 LOG_FILE="$LOG_DIR/daemon.log"
@@ -36,6 +36,11 @@ cat > "$PLIST" <<EOF
         <string>$NODE_BIN</string>
         <string>$DAEMON_JS</string>
     </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
     <key>KeepAlive</key>
     <true/>
     <key>RunAtLoad</key>

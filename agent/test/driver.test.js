@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { driveCli, codexArgs } from '../src/driver.js';
+import { driveCli, codexArgs, hermesArgs } from '../src/driver.js';
 
 test('逐行解析 NDJSON,坏行忽略,退出回调', async () => {
   const lines = [];
@@ -30,4 +30,12 @@ test('codexArgs 有 resume:exec resume <id> + 标准旗子 + prompt(0.139.0 实�
     codexArgs('继续', { resume: 'abc-123' }),
     ['exec', 'resume', 'abc-123', ...CODEX_FLAGS, '继续'],
   );
+});
+
+test('hermesArgs 无 resume:-z prompt --continue(续主会话)', () => {
+  assert.deepEqual(hermesArgs('查天气'), ['-z', '查天气', '--continue']);
+});
+
+test('hermesArgs 有 resume:-z prompt --resume <会话>', () => {
+  assert.deepEqual(hermesArgs('继续', { resume: 's1' }), ['-z', '继续', '--resume', 's1']);
 });

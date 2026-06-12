@@ -38,6 +38,33 @@ test('语音解析:唯一命中带引擎;重名→ambiguous;未命中→null', (
   assert.equal(resolveSpoken('随便聊聊天气', reg), null);
 });
 
+test('buildRegistry:同 cwd 多 hermes 会话靠 sessionId 区分,不互相覆盖', () => {
+  const reg = buildRegistry([
+    { cwd: '/h/.hermes', agent: 'hermes', base: 'NVDA', sessionId: 's1', lastActive: 'a' },
+    { cwd: '/h/.hermes', agent: 'hermes', base: '黄金', sessionId: 's2', lastActive: 'b' },
+    { cwd: '/h/.hermes', agent: 'hermes', base: '模型', sessionId: 's3', lastActive: 'c' },
+  ]);
+  assert.equal(reg.length, 3);
+  assert.deepEqual(reg.map((e) => e.sessionId).sort(), ['s1', 's2', 's3']);
+});
+
+test('语音解析:hermes 会话条目带 resumeId(buildRegistry 透传 sessionId)', () => {
+  const reg = buildRegistry([
+    { cwd: '/home/u/.hermes', agent: 'hermes', base: 'NVDA播报', sessionId: '20260611_133021_aa281975', lastActive: '38m ago' },
+  ]);
+  const job = resolveSpoken('NVDA播报 再播一次', reg);
+  assert.deepEqual(job, {
+    project: 'NVDA播报', cwd: '/home/u/.hermes', agent: 'hermes',
+    prompt: '再播一次', resumeId: '20260611_133021_aa281975',
+  });
+});
+
+test('语音解析:无 sessionId 的条目不带 resumeId', () => {
+  const reg = buildRegistry([{ cwd: '/a/wiki', agent: 'claude', base: 'wiki' }]);
+  const job = resolveSpoken('wiki 跑测试', reg);
+  assert.equal('resumeId' in job, false);
+});
+
 test('saveAlias:唯一性强制;同项目改名清旧名', () => {
   const file = join(mkdtempSync(join(tmpdir(), 'earpiece-')), 'aliases.json');
   saveAlias(file, '维基', { cwd: '/a/wiki', agent: 'claude' });

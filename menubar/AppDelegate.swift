@@ -6,7 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // ── 常量 ──
     /// daemon 脚本路径(指向原仓库,不是 worktree)
-    private let daemonJS = "/Volumes/2nd/build/claude-remo-app/agent/src/daemon.js"
+    private let daemonJS = "$HOME/codetalkie/agent/src/daemon.js"
     /// LaunchAgent 标签(与 scripts/install-daemon.sh 一致)
     private let launchAgentLabel = "com.earpiece.daemon"
     /// claude CLI 原始路径(用户的 claude 是 shell alias,Terminal 脚本里必须用原始路径)

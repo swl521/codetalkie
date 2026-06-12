@@ -32,7 +32,7 @@ test('computer use / MCP 工具有人话动词', () => {
 });
 
 test('底线模板', () => {
-  assert.equal(toSpeech({ type: EVENT.SESSION_STARTED }), '开始干活了');
+  assert.equal(toSpeech({ type: EVENT.SESSION_STARTED }), ''); // 不再播"开始干活了"
   assert.equal(toSpeech({ type: EVENT.APPROVAL_NEEDED, summary: '要删 config.json' }), '要删 config.json，等你批准');
   assert.equal(toSpeech({ type: EVENT.TASK_FINISHED, text: '都改好了' }), '任务完成。都改好了');
   assert.equal(toSpeech({ type: EVENT.TASK_FINISHED, text: '' }), '任务完成');

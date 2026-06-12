@@ -4,16 +4,16 @@
 // 指令格式: {"text":"wiki 跑一下测试"} — 首词若在 ~/.earpiece/projects.json 注册表中
 // 则路由到该项目目录;否则整句给 demo 项目(家目录)。
 import http from 'node:http';
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
-import { homedir } from 'node:os';
+import { homedir, hostname, networkInterfaces } from 'node:os';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { runTask } from './runTask.js';
 import { summarizeToolRequest } from './translate.js';
 import { speak } from './speaker.js';
 import { buildPayload, sendPush } from './apns.js';
-import { scanClaude, scanCodex } from './scanProjects.js';
+import { scanClaude, scanCodex, scanHermesSessions, exportHermesSession, parseHermesHistory } from './scanProjects.js';
 import { buildRegistry, resolveSpoken, saveAlias, loadAliases } from './registry.js';
 import { extractTail } from './transcriptTail.js';
 
@@ -84,6 +84,8 @@ export function createDaemon({
     queue.push(job);
     pump();
     logLine({ project: job.project, role: 'user', text: (job.agent === 'codex' ? '[codex] ' : '') + job.prompt });
+    // 收到即回显任务(代替"开始干活了"):让用户确认指令到位、并复述任务
+    notify({ project: job.project, text: `收到,${job.prompt}` });
     return job;
   }
 
@@ -109,7 +111,7 @@ export function createDaemon({
       const project = current?.project ?? 'agent';
       const summary = summarizeToolRequest(parsed.tool_name, parsed.input);
       const timer = setTimeout(() => respondApproval(id, false, '等太久没人批,先拒绝了'), approvalTimeoutMs);
-      approvals.set(id, { res, timer, input: parsed.input ?? {}, project });
+      approvals.set(id, { id, res, timer, input: parsed.input ?? {}, project, summary });
       logLine({ project, role: 'event', text: `🔔 ${summary},等待批准` });
       announce({ id, project, summary });
       return; // res 不结束,长挂等 /approval/respond
@@ -145,15 +147,36 @@ export function createDaemon({
   return {
     handle, queueSize: () => queue.length, enqueueText, respondFromRelay,
     setResolver: (fn) => { currentResolver = fn; },
+    // 手机端实时状态:在干什么、排几个、几个等批准(含摘要,供 App 内横幅直接批/拒)
+    state: () => ({
+      running: current?.project ?? null,
+      queued: queue.length,
+      pending: [...approvals.values()].map(({ id, project, summary }) => ({ id, project, summary })),
+    }),
   };
 }
 
-// Mac → Relay 长轮询取信。断网自动重试,永不退出。
+// 本机全部私网 IPv4(给手机直连发现用)。手机按自己网段挑匹配的,
+// 所以多网卡(Hyper-V/WSL/VMware/Tailscale)全报出来,真实 LAN 排前面。
+export function lanIPs() {
+  const all = [];
+  for (const list of Object.values(networkInterfaces())) {
+    for (const i of list ?? []) {
+      if (i.family === 'IPv4' && !i.internal
+        && /^(192\.168|10\.|172\.(1[6-9]|2\d|3[01]))\./.test(i.address)) all.push(i.address);
+    }
+  }
+  // 192.168 / 10. 是真实家用网段,优先;172.16-31 多为虚拟网卡,靠后
+  const rank = (ip) => (ip.startsWith('192.168') ? 0 : ip.startsWith('10.') ? 1 : 2);
+  return all.sort((a, b) => rank(a) - rank(b));
+}
+
+// 电脑 → Relay 长轮询取自己机器格子的信。断网自动重试,永不退出。
 export async function pullLoop(relay, daemon, log = console.log) {
-  log(`☁ Relay 取信循环启动: ${relay.url}`);
+  log(`☁ Relay 取信循环启动: ${relay.url} [${relay.machine}]`);
   for (;;) {
     try {
-      const r = await fetch(`${relay.url}/pull?wait=25`, {
+      const r = await fetch(`${relay.url}/pull?wait=25&machine=${encodeURIComponent(relay.machine)}`, {
         headers: { authorization: `Bearer ${relay.token}` },
       });
       if (!r.ok) { await new Promise((s) => setTimeout(s, 5000)); continue; }
@@ -169,6 +192,9 @@ export async function pullLoop(relay, daemon, log = console.log) {
         } else if (m.type === 'alias') {
           await daemon.onAlias?.(m.body ?? {});
           log(`☁ 收到改名:「${m.body?.alias}」`);
+        } else if (m.type === 'settings') {
+          await daemon.onSettings?.(m.body ?? {});
+          log(`☁ 收到设置: ${JSON.stringify(m.body)}`);
         }
       }
     } catch {
@@ -179,6 +205,14 @@ export async function pullLoop(relay, daemon, log = console.log) {
 
 // ── 启动入口 ──
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  // systemd/计划任务的 PATH 很窄,补上各 CLI 的常见安装位置,否则 spawn 找不到 claude/codex/hermes
+  const extra = [
+    join(homedir(), '.local', 'bin'),
+    join(homedir(), '.npm-global', 'bin'),
+    '/opt/homebrew/bin', '/usr/local/bin',
+  ];
+  process.env.PATH = [...extra, process.env.PATH ?? ''].join(':');
+
   const dir = join(homedir(), '.earpiece');
   mkdirSync(dir, { recursive: true });
 
@@ -198,8 +232,12 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'spike', 'apns.json'),
   ].find(existsSync) ?? null;
   const apnsConfig = apnsPath ? JSON.parse(readFileSync(apnsPath, 'utf8')) : null;
+
+  // 用户设置(播报级别等):手机滑块改完经 relay 下发,落盘生效
+  const settingsPath = join(dir, 'settings.json');
+  const userSettings = existsSync(settingsPath) ? JSON.parse(readFileSync(settingsPath, 'utf8')) : {};
   const defaults = {
-    level: 3,
+    level: Number(userSettings.level) || 3,
     push: apnsConfig ? apnsPath : null,
     // 批准桥接:runTask 会把权限请求经 approval-mcp 转回本 daemon
     approval: {
@@ -219,9 +257,17 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     }
   };
 
+  // 机器名:多电脑时区分信箱格子。默认主机名,可用 ~/.earpiece/machine-id 覆盖
+  const machineIdPath = join(dir, 'machine-id');
+  const machine = (existsSync(machineIdPath)
+    ? readFileSync(machineIdPath, 'utf8').trim()
+    : hostname().split('.')[0]).replace(/[^\w一-龥-]/g, '-');
+
   // 公网 Relay(可选):~/.earpiece/relay.json = { "url": "https://your-relay.example.com", "token": "..." }
   const relayPath = join(dir, 'relay.json');
-  const relayConfig = existsSync(relayPath) ? JSON.parse(readFileSync(relayPath, 'utf8')) : null;
+  const relayConfig = existsSync(relayPath)
+    ? { ...JSON.parse(readFileSync(relayPath, 'utf8')), machine }
+    : null;
   const logLine = makeRelayLogger(relayConfig); // 字幕回放
 
   // 系统提示(重名拒绝等):Mac 出声 + 推手机
@@ -242,11 +288,14 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   // 项目注册表:扫描现成的 Claude/Codex 项目 + 别名,每分钟刷新并上报 relay
   const aliasesPath = join(dir, 'aliases.json');
   let registry = [];
+  // hermes 没有项目目录,它的单位是会话。装了 hermes(~/.hermes 存在)就把每个会话
+  // 摆成一个只读项目(scanHermesSessions 跑 `hermes sessions list` 解析,带 sessionId 句柄)。
+
   async function refreshRegistry() {
-    registry = buildRegistry([...scanClaude(), ...scanCodex()], loadAliases(aliasesPath));
+    registry = buildRegistry([...scanClaude(), ...scanCodex(), ...scanHermesSessions()], loadAliases(aliasesPath));
     daemon.setResolver((text) => resolveSpoken(text, registry));
     if (relayConfig) {
-      fetch(`${relayConfig.url}/registry`, {
+      fetch(`${relayConfig.url}/registry?machine=${encodeURIComponent(machine)}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${relayConfig.token}` },
         body: JSON.stringify(registry.map(({ name, cwd, agent, base, lastActive, needsRename, aliased }) =>
@@ -264,30 +313,49 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
       headers: { 'content-type': 'application/json', authorization: `Bearer ${relayConfig.token}` },
       body: JSON.stringify(line),
     }).catch(() => {}),
+    del: (path) => fetch(`${relayConfig.url}${path}`, {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${relayConfig.token}` },
+    }).catch(() => {}),
   };
-  const seeded = new Set();
-  async function seedHistories() {
+  // 历史 = 会话档案最近 10 条人话。档案 mtime 变了(=又聊了)就重抽替换,所以会跟着实时刷新。
+  const seededMtime = new Map(); // 项目名 → 上次回填用的档案 mtime
+  async function pushHistory(name, tail) {
+    if (!tail.length) return;
+    const baseTs = Date.now() - tail.length * 1000;
+    await relayApi.del(`/history?project=${encodeURIComponent(name)}`);
+    await relayApi.log({ project: name, role: 'event', text: '↻ 电脑上的最近记录', ts: baseTs - 1000 });
+    for (let i = 0; i < tail.length; i++) {
+      await relayApi.log({ project: name, ...tail[i], ts: baseTs + i * 1000 });
+    }
+  }
+  async function refreshHistories() {
     if (!relayApi) return;
     for (const e of registry) {
-      if (seeded.has(e.name) || !e.file) continue;
-      try {
-        const existing = await relayApi.get(`/history?project=${encodeURIComponent(e.name)}`);
-        seeded.add(e.name);
-        if (Array.isArray(existing) && existing.length) continue;
-        const tail = extractTail(e.file, 10);
-        if (!tail.length) continue;
-        const baseTs = Date.now() - tail.length * 1000;
-        await relayApi.log({ project: e.name, role: 'event', text: '↻ 电脑上的最近记录', ts: baseTs - 1000 });
-        for (let i = 0; i < tail.length; i++) {
-          await relayApi.log({ project: e.name, ...tail[i], ts: baseTs + i * 1000 });
-        }
-        console.log(`↻ 已回填 ${e.name} 的 ${tail.length} 条历史`);
-      } catch { /* 下轮再试 */ }
+      // hermes 会话:没有磁盘档案,导出会话拿消息。签名(message_count:ended_at)变了才重推。
+      if (e.agent === 'hermes' && e.sessionId) {
+        const obj = exportHermesSession(e.sessionId);
+        if (!obj) continue;
+        const { sig, lines } = parseHermesHistory(obj, 10);
+        if (seededMtime.get(e.name) === sig) continue;
+        seededMtime.set(e.name, sig);
+        await pushHistory(e.name, lines);
+        continue;
+      }
+      if (!e.file) continue;
+      let mtime = 0;
+      try { mtime = statSync(e.file).mtimeMs; } catch { continue; }
+      if (seededMtime.get(e.name) === mtime) continue; // 没变化,跳过
+      const tail = extractTail(e.file, 10);
+      seededMtime.set(e.name, mtime);
+      await pushHistory(e.name, tail);
     }
   }
 
   daemon.onAlias = async ({ alias, cwd, agent }) => {
     try {
+      // 广播消息:这个项目不在本机就不归我管,静默忽略(在哪台机就由哪台应答)
+      if (!registry.some((r) => r.cwd === cwd && r.agent === agent)) return;
       // 搬历史:旧名下的字幕复制到新名(改名不丢上下文)
       const old = registry.find((r) => r.cwd === cwd && r.agent === agent)?.name;
       saveAlias(aliasesPath, alias, { cwd, agent });
@@ -296,7 +364,6 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
         for (const l of (Array.isArray(lines) ? lines : [])) {
           await relayApi.log({ project: alias, ...l });
         }
-        seeded.add(alias);
       }
       await refreshRegistry();
       notify({ project: '小易', text: `好,以后叫「${alias}」` });
@@ -304,8 +371,29 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
       notify({ project: '小易', text: e.message });
     }
   };
-  refreshRegistry().then(seedHistories);
-  setInterval(() => refreshRegistry().then(seedHistories), 60_000);
+  daemon.onSettings = async ({ level }) => {
+    const lv = Number(level);
+    if (lv >= 1 && lv <= 5) {
+      defaults.level = lv; // runner 每次任务展开 defaults,即时生效
+      userSettings.level = lv;
+      writeFileSync(settingsPath, JSON.stringify(userSettings, null, 2));
+      notify({ project: '小易', text: `好,播报改成 ${lv} 级` });
+    }
+  };
+
+  // 实时状态上报(App 内横幅/状态行用),10 秒一拍。带本机局域网 IP,供手机直连发现。
+  if (relayApi) {
+    setInterval(() => {
+      fetch(`${relayConfig.url}/state?machine=${encodeURIComponent(machine)}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${relayConfig.token}` },
+        body: JSON.stringify({ ...daemon.state(), lanIPs: lanIPs() }),
+      }).catch(() => {});
+    }, 10_000);
+  }
+
+  refreshRegistry().then(refreshHistories);
+  setInterval(() => refreshRegistry().then(refreshHistories), 30_000);
   const server = http.createServer((req, res) => {
     let body = '';
     req.on('data', (d) => { body += d; });

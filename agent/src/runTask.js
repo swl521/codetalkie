@@ -1,9 +1,10 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
-import { driveCli, claudeArgs, codexArgs } from './driver.js';
+import { driveCli, claudeArgs, codexArgs, hermesArgs } from './driver.js';
 import { normalizeClaudeMessage } from './normalize.js';
 import { normalizeCodexMessage } from './normalizeCodex.js';
+import { normalizeHermesMessage } from './normalizeHermes.js';
 import { Pipeline } from './pipeline.js';
 import { SilenceMonitor } from './monitor.js';
 import { speak } from './speaker.js';
@@ -23,24 +24,35 @@ export function loadAuthEnv() {
 // 跑一个任务直到结束:驾驶 CLI → 管线 → say/APNs。返回最终状态。
 // main.js(命令行)和 daemon.js(常驻)共用。
 // agent: 'claude'(默认)| 'codex' — 决定 bin、参数形态、归一器、env。
+// resume 句柄解析:hermes 会话项目用 resumeId(来自 `hermes sessions list` 的 ID,不归
+// SessionStore 管);其他引擎用 SessionStore 里记的链头。fresh 一律不续。
+export function pickResume({ agent, resumeId, fresh, sessionResume }) {
+  if (fresh) return undefined;
+  if (agent === 'hermes' && resumeId) return resumeId;
+  return sessionResume;
+}
+
 export function runTask({
   project, prompt, cwd = process.cwd(), level = 3,
   silent = false, fresh = false, push = null,
-  agent = 'claude', bin = agent === 'codex' ? 'codex' : 'claude',
+  agent = 'claude', bin = agent === 'codex' ? 'codex' : agent === 'hermes' ? 'hermes' : 'claude',
+  resumeId = null, // hermes 会话 resume 句柄(其他引擎忽略)
   approval = null, // { daemonUrl, token, mcpPath }:权限请求经 approval-mcp 转给手机批准(仅 claude)
   onSpoken = null, // 每句播报后回调(字幕回放用)
   log = console.log,
 }) {
-  // 每个 agent 一套"参数函数 + 归一器 + 默认 bin"。bin 被换掉时走回放路径(只传 prompt)。
+  // 每个 agent 一套"参数函数 + 归一器 + 默认 bin + 驱动模式"。bin 被换掉时走回放路径(只传 prompt)。
   const profile = agent === 'codex'
-    ? { defaultBin: 'codex', makeArgs: codexArgs, normalize: normalizeCodexMessage }
-    : { defaultBin: 'claude', makeArgs: claudeArgs, normalize: normalizeClaudeMessage };
-  // 会话 key:codex 加前缀隔离,避免与同项目的 claude 会话串号;claude 不加,向后兼容旧档案。
-  const sessionProject = agent === 'codex' ? `codex:${project}` : project;
+    ? { defaultBin: 'codex', makeArgs: codexArgs, normalize: normalizeCodexMessage, mode: 'json' }
+    : agent === 'hermes'
+      ? { defaultBin: 'hermes', makeArgs: hermesArgs, normalize: normalizeHermesMessage, mode: 'text' }
+      : { defaultBin: 'claude', makeArgs: claudeArgs, normalize: normalizeClaudeMessage, mode: 'json' };
+  // 会话 key:codex/hermes 各加前缀隔离,避免与同名 claude 会话串号;claude 不加,向后兼容旧档案。
+  const sessionProject = agent === 'claude' ? project : `${agent}:${project}`;
 
   const pushSink = push ? makePushSink(JSON.parse(readFileSync(push, 'utf8'))) : null;
   const sessions = new SessionStore(join(homedir(), '.earpiece', 'sessions.json'));
-  const resume = fresh ? undefined : sessions.get(sessionProject, cwd);
+  const resume = pickResume({ agent, resumeId, fresh, sessionResume: sessions.get(sessionProject, cwd) });
 
   const pipeline = new Pipeline({ project, level });
   const monitor = new SilenceMonitor();
@@ -89,7 +101,8 @@ export function runTask({
       bin,
       args,
       cwd,
-      // codex 不注入 CLAUDE_CODE_OAUTH_TOKEN(用自己的 ~/.codex/auth.json)
+      mode: profile.mode,
+      // 仅 claude 注入 CLAUDE_CODE_OAUTH_TOKEN;codex/hermes 用各自的认证
       env: agent === 'claude' && bin === 'claude' ? loadAuthEnv() : undefined,
       onMessage: (msg) => {
         for (const e of profile.normalize(msg)) {

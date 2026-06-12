@@ -27,7 +27,12 @@ export function saveAlias(filePath, alias, target) {
 // 扫描条目 + 别名 → [{name, cwd, agent, base, lastActive, aliased, needsRename}]
 export function buildRegistry(entries, aliases = {}) {
   const byKey = new Map();
-  for (const e of entries) byKey.set(`${e.agent}@${e.cwd}`, { ...e, name: e.base, aliased: false });
+  // 去重 key:claude/codex 一目录一项目(agent@cwd);hermes 多会话共用一个 cwd,
+  // 必须把 sessionId 也并进 key,否则同 cwd 的会话会互相覆盖(只剩一条)。
+  for (const e of entries) {
+    const key = e.sessionId ? `${e.agent}@${e.cwd}@${e.sessionId}` : `${e.agent}@${e.cwd}`;
+    byKey.set(key, { ...e, name: e.base, aliased: false });
+  }
   for (const [alias, t] of Object.entries(aliases)) {
     const hit = byKey.get(`${t.agent}@${t.cwd}`);
     if (hit) { hit.name = alias; hit.aliased = true; }
@@ -48,7 +53,10 @@ export function resolveSpoken(text, registry) {
   const hits = registry.filter((e) => e.name === head);
   if (hits.length === 1 && rest.length) {
     const e = hits[0];
-    return { project: e.name, cwd: e.cwd, agent: e.agent === 'claude' ? undefined : e.agent, prompt: rest.join(' ') };
+    const job = { project: e.name, cwd: e.cwd, agent: e.agent === 'claude' ? undefined : e.agent, prompt: rest.join(' ') };
+    // hermes 会话项目带 resume 句柄(来自 `hermes sessions list` 的 ID,不归 SessionStore 管)
+    if (e.sessionId) job.resumeId = e.sessionId;
+    return job;
   }
   if (hits.length > 1) return { ambiguous: head };
   return null;
