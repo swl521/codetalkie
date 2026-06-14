@@ -6,6 +6,18 @@
 >
 > Like a dispatcher on a trucker's radio: your coding agent reports progress into your earbuds while you're away from the screen.
 
+## 📲 试用 Beta / Try it
+
+**iPhone — TestFlight 公开测试(任意 Apple ID 可装):**
+
+👉 **https://testflight.apple.com/join/JebJJr4P**
+
+用 iPhone 的 Safari 打开链接 → 安装 TestFlight → 安装「答鸭 / Ducky」。再按下方[快速开始](#快速开始局域网模式)在电脑上跑起接收端、配对手机即可。
+
+> iPhone — open the link in Safari, install TestFlight, then install Ducky. Pair it with your computer (see Quick Start) and you're live.
+
+Android / 桌面端(macOS · Windows)安装包陆续放出。
+
 ## 它不是什么
 
 - 不是又一个手机聊天客户端——创建/管理项目请用 Claude Code 和 Codex 本体
