@@ -1,10 +1,14 @@
-# Codetalkie 🎧
+# Codetalkie 🎧 — hands-free voice layer for Claude Code & Codex
+
+**Your AI coding agent reports progress into your AirPods, and you command it by voice or a phone tap — screen-free.** One phone drives many computers (macOS · Windows · Linux), with apps for **iOS and Android**.
+
+> Phone locked in your pocket, you're out for a run. Say *"wiki, run the tests"* — the AI agent on your computer starts working; each step is turned into plain speech and read into your AirPods by Siri; when it needs to delete a file it asks *"Approve?"* — you say *"approve"* (or tap the notification), and it continues. The phone never leaves your pocket.
+>
+> Think of it as a dispatcher on a trucker's radio for your coding agent. Works with **Claude Code**, **OpenAI Codex**, and Hermes.
 
 **耳机里的 AI 副驾** — 为 Claude Code / Codex / Hermes 打造的"脱手"语音层,一部手机驱动多台电脑。
 
-> 手机锁屏在口袋,你在跑步。说一句"维基 跑测试",电脑上的 AI 开始干活;每步进展翻成人话,Siri 念进你的 AirPods;要删文件时它先问你:"批准吗?"——你说"告诉小易批准",它继续。全程手机不出口袋。
->
-> Like a dispatcher on a trucker's radio: your coding agent reports progress into your earbuds while you're away from the screen.
+> 手机锁屏在口袋,你在跑步。说一句"维基 跑测试",电脑上的 AI 开始干活;每步进展翻成人话,Siri 念进你的 AirPods;要删文件时它先问你:"批准吗?"——你说"告诉答鸭批准",它继续。全程手机不出口袋。
 
 ## 下载安装(桌面端)
 

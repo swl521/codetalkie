@@ -1,0 +1,73 @@
+name: Release
+# 打 tag(v*)或手动触发 → 自动编 Windows 安装包 + Android APK,挂到 Releases 当下载链接。
+# 公开库源码是脱敏版(占位中继/bundle),编出的成品供他人自配中继使用。
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+      - name: Build self-contained installer
+        shell: pwsh
+        run: ./windows/packaging/build.ps1
+      - name: Collect output
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path out | Out-Null
+          $exe = Get-ChildItem -Recurse windows/dist -Filter *.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($exe) { Copy-Item $exe.FullName out/DuckySetup-Windows-x64.exe }
+          $pub = "windows/Ducky/bin/Release/net8.0-windows/win-x64/publish"
+          if (Test-Path $pub) { Compress-Archive -Path "$pub/*" -DestinationPath out/Ducky-Windows-x64.zip -Force }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: out/*
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build debug APK
+        run: |
+          cd android
+          chmod +x gradlew 2>/dev/null || true
+          ./gradlew --no-daemon assembleDebug
+      - name: Collect APK
+        run: |
+          mkdir -p out
+          cp android/app/build/outputs/apk/debug/app-debug.apk out/Codetalkie-Android.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: out/*
+
+  release:
+    needs: [windows, android]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Publish Release with assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/**/*
+          generate_release_notes: true
+          fail_on_unmatched_files: false
