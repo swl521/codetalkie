@@ -36,6 +36,13 @@ Codex 驱动(`--agent codex`,0.139.0 实测,resume 顺序确认)、App 图标、
 | 06-12 | **📱 Android 版真机落地**(华为):Kotlin+Compose 全套,前台轮询+TTS,Mac 全新工具链编译装机;weixin 重名 key 崩溃修复(同族 bug 第三案) |
 | 06-12 | **Android 双语音引擎**:微软 Edge 云端神经语音(免费无 key,晓晓/云希等 6 音色,Sec-MS-GEC 签名)+ 系统 TTS 音色选择,点选即试听 |
 | 06-11 | 开源库 codetalkie 同步(脱敏:域名/bundle/TeamID/KeyID/路径全替换,relay 与密钥排除) |
+| 06-15 | **三端中英双语**:iOS/macOS SwiftUI 自动本地化(en/zh-Hans.lproj)+ String(localized:);菜单栏/Windows 托盘内联 L();agent i18n;跟随系统语言 |
+| 06-15 | iOS 扫码配对(AVFoundation)+ 6 位码键盘「完成」键;菜单栏图标换手机同款答鸭(MenuBarIcon) |
+| 06-15 | **agent-hub channel 心跳重注册**:被清/重建/daemon 重启自愈,启动顺序无关(根治"哪个重启就乱") |
+| 06-15 | **跨机派活** dispatch.js(电脑↔电脑派任务,结果回流)+ **`@机器名` 定向**(中继 routeCommand,绕开重名歧义);Mac↔Win 真机验证(回「Windows 10 Pro」) |
+| 06-15 | **批准/通知集中经中继发推送**(relay 内置 APNs ES256/http2;没 .p8 的机器如 Windows 也能弹到手机);批准超时 120→300s;.p8+apns.json 部署到 VM(scripts/deploy-relay-apns.sh) |
+| 06-15 | **通用选择题**:ask_user 工具(ask-mcp)+ daemon /choice 挂起 + ①②③ 通知按钮(长按)+ 文字数字兜底;真机验证(点③→沙拉、打"2"→香蕉) |
+| 06-15 | Windows 托盘双语 + 「在终端继续(agent-hub)」;Windows 源码脱敏进公开库;安装包产线(build.ps1/Inno)经 Mac 跨机驱动 Windows 编译验证 |
 
 ## 已验证(降为零风险)
 
@@ -80,4 +87,5 @@ Codex 驱动(`--agent codex`,0.139.0 实测,resume 顺序确认)、App 图标、
 1. 户外真实场景实测(蜂窝网络 + AirPods + 跑步)——产品定义场景的最终检验
 2. Android 二期:FCM 推送(省电息屏版,需用户 Firebase 项目)、语音输入、Siri 对位(快捷指令)
 3. Hermes 二期:经批准环投递到飞书等真人渠道(现为只读,绝不自动发真人)
-4. onboarding 打磨;APNs 移入 relay(.p8 单点);Codex app-server 批准(二期);Watch 扩展(二期)
+4. onboarding 打磨;Codex app-server 批准(二期);Watch 扩展(二期)
+   - ✅ APNs 已移入 relay(.p8 单点,集中发批准/选择题推送);✅ 跨机派活 + @机器名;✅ 通用选择题(ask_user)
