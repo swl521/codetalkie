@@ -12,16 +12,19 @@
 
 ## 下载安装(桌面端)
 
-成品桌面应用见 [Releases](../../releases) —— 内嵌 Node + agent,客户机零依赖:
+最新成品见 **[Releases ⬇️](https://github.com/swl521/codetalkie/releases/latest)** —— Windows 桌面端内嵌 Node + agent,客户机零依赖:
 
-| 平台 | 文件 | 安装 |
+| 平台 | 下载 | 安装 |
 |------|------|------|
-| **Mac**(Apple Silicon) | `答鸭-Ducky.dmg` | 双击 → 拖进「应用程序」→ **右键 App → 打开**(过 Gatekeeper,因暂未公证)|
-| **Windows**(x64) | `Ducky-Windows-x64.zip` | 解压 → 运行 `install.bat`(装到 `%LOCALAPPDATA%\Ducky`、建开机自启)|
+| **Windows**(x64) | `DuckySetup-Windows-x64.exe` | 双击安装(装到 `%LOCALAPPDATA%\Ducky`、建开机自启);或下 `Ducky-Windows-x64.zip` 解压跑 `install.bat` |
+| **Android** | `Codetalkie-Android.apk` | 侧载安装(设置里允许"未知来源")|
+| **iOS** | TestFlight | 见仓库内 TestFlight 邀请链接 |
+| **macOS** | 暂从源码构建 | `menubar/`:`dotnet`/Xcode 构建,或 `scripts/build-mac.sh`(签名+公证待补) |
 
-装好后:菜单栏/托盘出现 🦆 → 点「配对码 / 二维码」→ 手机「答鸭」App 扫码或输 6 位码绑定 → 之后这台电脑的进展就播进你耳机。绑多台手机:点「绑定新手机(出一个新码)」让每台各扫一次。
+装好后:菜单栏/托盘出现答鸭图标 → 点「配对码 / 二维码」→ 手机 App 扫码或输 6 位码绑定 → 这台电脑的进展就播进你耳机。绑多台手机:点「绑定新手机(出一个新码)」各扫一次。
 
-> 当前为开发签名(Mac ad-hoc / Win 未签名),首次打开需手动放行;正式签名+公证后无此步。
+> Windows 安装包当前未做代码签名,首次运行 SmartScreen 会拦,点「更多信息 → 仍要运行」放行;正式签名后无此步。
+> 公开版默认中继是占位符 `your-relay.example.com` —— 自部署 `relay/` 或填自己的中继地址到 `~/.earpiece/relay.json` 后才能跨网。
 
 ## 它不是什么
 
