@@ -87,16 +87,15 @@ export function runTask({
 
     let args = bin === profile.defaultBin ? profile.makeArgs(prompt, { resume }) : [prompt];
     if (approval && agent === 'claude' && bin === 'claude') {
-      const mcpConfig = {
-        mcpServers: {
-          approval: {
-            command: process.execPath,
-            args: [approval.mcpPath],
-            env: { EARPIECE_DAEMON: approval.daemonUrl, EARPIECE_TOKEN: approval.token },
-          },
-        },
+      const env = { EARPIECE_DAEMON: approval.daemonUrl, EARPIECE_TOKEN: approval.token };
+      const mcpServers = {
+        approval: { command: process.execPath, args: [approval.mcpPath], env },
       };
-      args = [...args, '--permission-prompt-tool', 'mcp__approval__approve', '--mcp-config', JSON.stringify(mcpConfig)];
+      // 提问工具 ask_user(可选):让被派的 Agent 能向用户手机发选择题。普通工具,无需 permission-prompt。
+      if (approval.askMcpPath) {
+        mcpServers.ask = { command: process.execPath, args: [approval.askMcpPath], env };
+      }
+      args = [...args, '--permission-prompt-tool', 'mcp__approval__approve', '--mcp-config', JSON.stringify({ mcpServers })];
     }
 
     log(`▶ [${project}]${agent === 'codex' ? ' agent=codex' : ''} level=${level} cwd=${cwd}${resume ? ` resume=${resume}` : ''}${approval ? ' approval=on' : ''}`);

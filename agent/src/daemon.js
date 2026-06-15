@@ -24,6 +24,7 @@ import { extractTail } from './transcriptTail.js';
 export function createDaemon({
   token, runner = runTask, projects = {}, defaults = {},
   announce = async () => {}, approvalTimeoutMs = 300_000,
+  announceChoice = async () => {}, choiceTimeoutMs = 600_000,
   logLine = () => {}, // 字幕回放:{project, role:'user'|'assistant'|'event', text}
   notify = () => {}, // 系统提示音(如重名拒绝):({project, text})
   resolver = null,   // 语音解析(text)→job|{ambiguous}|null;不传则用 projects 映射表
@@ -31,6 +32,21 @@ export function createDaemon({
   const queue = [];
   let current = null;
   const approvals = new Map(); // id → { res(挂起的HTTP响应), timer, input }
+  const choices = new Map(); // id → { res, timer, project, question, options }(选择题:挂起等手机选/打数字)
+
+  // 收口一道选择题:index = 选中的第几项(0 基)。回给提问方所选项。
+  function resolveChoice(id, index) {
+    const c = choices.get(id);
+    if (!c) return false;
+    clearTimeout(c.timer);
+    choices.delete(id);
+    const i = Number(index);
+    const chosen = (i >= 0 && c.options[i] != null) ? c.options[i] : ''; // 无效/超时(-1)→ 空,不误选
+    c.res.writeHead(200, { 'Content-Type': 'application/json' });
+    c.res.end(JSON.stringify({ index: i, choice: chosen }));
+    logLine({ project: c.project, role: 'event', text: `已选:${chosen}` });
+    return true;
+  }
 
   // 把挂起的权限请求收口:approve=true 放行(回 allow+原参数),false 拒绝
   function respondApproval(id, approve, denyMsg = t('userDenied')) {
@@ -101,9 +117,42 @@ export function createDaemon({
       try { parsed = JSON.parse(body); } catch { res.writeHead(400); res.end('bad json'); return; }
       const text = (parsed.text ?? '').trim();
       if (!text) { res.writeHead(400); res.end('empty'); return; }
+      // 文字兜底:有挂起的选择题、且输入是单个数字 → 当作选答(1 起,转 0 基)。
+      const num = text.match(/^[(（]?([1-9])[)）.、]?$/);
+      if (num && choices.size) {
+        const cid = [...choices.keys()].pop();
+        resolveChoice(cid, Number(num[1]) - 1);
+        res.writeHead(202, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ choiceAnswered: cid }));
+        return;
+      }
       const job = enqueueText(text);
       res.writeHead(202, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ queued: job.project, prompt: job.prompt }));
+      return;
+    }
+    if (req.method === 'POST' && req.url === '/choice/request') {
+      // 来自 ask-mcp(被派的 Agent 提问):挂起,推手机(①②③ 通知 + 正文),等回选或数字
+      let parsed;
+      try { parsed = JSON.parse(body); } catch { res.writeHead(400); res.end('bad json'); return; }
+      const id = randomUUID().slice(0, 8);
+      const project = parsed.project || current?.project || 'agent';
+      const question = String(parsed.question ?? '请选择');
+      const options = (Array.isArray(parsed.options) ? parsed.options : []).map(String).slice(0, 6);
+      if (!options.length) { res.writeHead(400); res.end('no options'); return; }
+      const timer = setTimeout(() => resolveChoice(id, -1), choiceTimeoutMs);
+      choices.set(id, { id, res, timer, project, question, options });
+      logLine({ project, role: 'event', text: `❓ ${question}(${options.map((o, k) => `${k + 1}.${o}`).join(' ')})` });
+      announceChoice({ id, project, question, options });
+      return; // 长挂等 /choice/respond 或数字兜底
+    }
+    if (req.method === 'POST' && req.url === '/choice/respond') {
+      let parsed;
+      try { parsed = JSON.parse(body); } catch { res.writeHead(400); res.end('bad json'); return; }
+      const id = parsed.id ?? [...choices.keys()].pop();
+      const ok = id !== undefined && resolveChoice(id, parsed.index);
+      res.writeHead(ok ? 200 : 404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok }));
       return;
     }
     if (req.method === 'POST' && req.url === '/approval/request') {
@@ -146,15 +195,21 @@ export function createDaemon({
     const id = body.id ?? [...approvals.keys()].pop();
     return id !== undefined && respondApproval(id, body.approve === true);
   }
+  // 中继来的选择题回选:带 id 精确命中,不带取最新挂起。
+  function respondChoiceFromRelay(body) {
+    const id = body.id ?? [...choices.keys()].pop();
+    return id !== undefined && resolveChoice(id, body.index);
+  }
 
   return {
-    handle, queueSize: () => queue.length, enqueueText, respondFromRelay,
+    handle, queueSize: () => queue.length, enqueueText, respondFromRelay, respondChoiceFromRelay,
     setResolver: (fn) => { currentResolver = fn; },
     // 手机端实时状态:在干什么、排几个、几个等批准(含摘要,供 App 内横幅直接批/拒)
     state: () => ({
       running: current?.project ?? null,
       queued: queue.length,
       pending: [...approvals.values()].map(({ id, project, summary }) => ({ id, project, summary })),
+      pendingChoices: [...choices.values()].map(({ id, project, question, options }) => ({ id, project, question, options })),
     }),
   };
 }
@@ -192,6 +247,9 @@ export async function pullLoop(relay, daemon, log = console.log) {
         } else if (m.type === 'approval') {
           daemon.respondFromRelay(m.body ?? {});
           log('☁ 收到批准应答');
+        } else if (m.type === 'choice') {
+          daemon.respondChoiceFromRelay(m.body ?? {});
+          log(`☁ 收到选择题回选: ${JSON.stringify(m.body)}`);
         } else if (m.type === 'alias') {
           await daemon.onAlias?.(m.body ?? {});
           log(`☁ 收到改名:「${m.body?.alias}」`);
@@ -272,6 +330,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
       daemonUrl: 'http://127.0.0.1:7780',
       token,
       mcpPath: join(dirname(fileURLToPath(import.meta.url)), '..', 'tools', 'approval-mcp.mjs'),
+      askMcpPath: join(dirname(fileURLToPath(import.meta.url)), '..', 'tools', 'ask-mcp.mjs'),
     },
   };
 
@@ -285,6 +344,19 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
       relayApi.post('/approval/notify', { id, project, summary }).catch(() => {});
     } else if (apnsConfig) {
       sendPush(apnsCfg(), buildPayload({ project, text, category: 'APPROVAL', extra: { approvalId: id } }))
+        .catch((e) => console.error('APNs:', e.message));
+    }
+  };
+
+  // 选择题播报:本机念问题 + 经中继统一推送(①②③ 通知);无中继才本机直发。
+  const announceChoice = async ({ id, project, question, options }) => {
+    const spoken = `${question}。${options.map((o, k) => `${k + 1}、${o}`).join(';')}`;
+    speak({ project, text: spoken }, { silent: !speakLocal }).catch(() => {});
+    if (relayApi) {
+      relayApi.post('/choice/notify', { id, project, question, options }).catch(() => {});
+    } else if (apnsConfig) {
+      const body = `${question}\n${options.map((o, k) => `${k + 1}. ${o}`).join('\n')}`;
+      sendPush(apnsCfg(), buildPayload({ project, text: body, category: 'CHOICE', extra: { choiceId: id, options } }))
         .catch((e) => console.error('APNs:', e.message));
     }
   };
@@ -315,7 +387,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   };
 
   const daemon = createDaemon({
-    token, projects, announce, logLine, notify,
+    token, projects, announce, announceChoice, logLine, notify,
     // 桥优先:claude 项目若本机有"同目录的活终端窗口"(agent-hub),指令注入那个窗口
     // —— 手机和电脑前是同一个对话。注入失败(没终端/端口死)才退回无头分身。
     runner: async (job) => {

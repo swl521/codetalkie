@@ -15,7 +15,14 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         let deny = UNNotificationAction(identifier: "DENY", title: "拒绝", options: [.destructive])
         let approvalCategory = UNNotificationCategory(identifier: "APPROVAL", actions: [approve, deny],
                                                       intentIdentifiers: [], options: [])
-        UNUserNotificationCenter.current().setNotificationCategories([approvalCategory])
+
+        // 选择题类通知:长按出 ①②③④(对应正文里 1./2./3./4. 选项)。多于 4 个的在对话里打数字。
+        let choiceActions = (1...4).map { i in
+            UNNotificationAction(identifier: "CHOICE_\(i - 1)", title: "\(i)", options: [])
+        }
+        let choiceCategory = UNNotificationCategory(identifier: "CHOICE", actions: choiceActions,
+                                                    intentIdentifiers: [], options: [])
+        UNUserNotificationCenter.current().setNotificationCategories([approvalCategory, choiceCategory])
 
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
             guard granted else {
@@ -68,6 +75,21 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
                                 didReceive response: UNNotificationResponse,
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
         let content = response.notification.request.content
+        // 选择题:点了 ①②③④ → 把选中的 index 回传给 daemon
+        if content.categoryIdentifier == "CHOICE",
+           let choiceId = content.userInfo["choiceId"] as? String,
+           response.actionIdentifier.hasPrefix("CHOICE_"),
+           let idx = Int(response.actionIdentifier.dropFirst("CHOICE_".count)) {
+            let curl = EarpieceConfig.endpoint.replacingOccurrences(of: "/command", with: "/choice/respond")
+            var creq = URLRequest(url: URL(string: curl)!)
+            creq.httpMethod = "POST"
+            creq.timeoutInterval = 8
+            creq.setValue("Bearer \(EarpieceConfig.token)", forHTTPHeaderField: "Authorization")
+            creq.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            creq.httpBody = try? JSONSerialization.data(withJSONObject: ["id": choiceId, "index": idx])
+            URLSession.shared.dataTask(with: creq) { _, _, _ in completionHandler() }.resume()
+            return
+        }
         guard content.categoryIdentifier == "APPROVAL",
               let approvalId = content.userInfo["approvalId"] as? String,
               response.actionIdentifier == "APPROVE" || response.actionIdentifier == "DENY" else {
