@@ -23,7 +23,7 @@ import { extractTail } from './transcriptTail.js';
 // 纯逻辑核心,可注入假 runner / announce 测试
 export function createDaemon({
   token, runner = runTask, projects = {}, defaults = {},
-  announce = async () => {}, approvalTimeoutMs = 120_000,
+  announce = async () => {}, approvalTimeoutMs = 300_000,
   logLine = () => {}, // 字幕回放:{project, role:'user'|'assistant'|'event', text}
   notify = () => {}, // 系统提示音(如重名拒绝):({project, text})
   resolver = null,   // 语音解析(text)→job|{ambiguous}|null;不传则用 projects 映射表
@@ -275,11 +275,15 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     },
   };
 
-  // 批准播报:Mac 出声 + 手机带「批准/拒绝」按钮的推送
+  // 批准播报:本机出声 + 手机带「批准/拒绝」按钮的推送。
+  // 推送优先走中继集中发(/approval/notify)——这样没有 .p8 的机器(如 Windows)也能弹到手机;
+  // 没配中继才退回本机直发(需本机有 apns.json+.p8)。二选一,避免重复通知。
   const announce = async ({ id, project, summary }) => {
     const text = `${summary}，批准吗？`;
     speak({ project, text }, { silent: !speakLocal }).catch(() => {});
-    if (apnsConfig) {
+    if (relayApi) {
+      relayApi.post('/approval/notify', { id, project, summary }).catch(() => {});
+    } else if (apnsConfig) {
       sendPush(apnsCfg(), buildPayload({ project, text, category: 'APPROVAL', extra: { approvalId: id } }))
         .catch((e) => console.error('APNs:', e.message));
     }
