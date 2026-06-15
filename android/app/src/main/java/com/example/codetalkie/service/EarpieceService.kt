@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.IBinder
 import android.speech.tts.TextToSpeech
 import androidx.core.app.NotificationCompat
+import com.example.codetalkie.R
 import com.example.codetalkie.data.RelayClient
 import com.example.codetalkie.data.SettingsRepository
 import com.example.codetalkie.tts.EdgePlayer
@@ -53,7 +54,8 @@ class EarpieceService : Service(), TextToSpeech.OnInitListener {
 
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
-            tts?.language = Locale.SIMPLIFIED_CHINESE
+            // 朗读语言跟随语言包(values-xx/strings.xml 的 tts_locale)
+            tts?.language = Locale.forLanguageTag(getString(R.string.tts_locale))
             ttsReady = true
         }
     }
@@ -73,8 +75,8 @@ class EarpieceService : Service(), TextToSpeech.OnInitListener {
         while (true) {
             try {
                 val s = settingsRepo.current()
-                if (s.token.isNotBlank() && s.subscribedProjects.isNotEmpty()) {
-                    val client = RelayClient(s.relayUrl, s.token)
+                if (s.bearer.isNotBlank() && s.subscribedProjects.isNotEmpty()) {
+                    val client = RelayClient(s.relayUrl, s.bearer)
                     for (project in s.subscribedProjects) {
                         val history = runCatching { client.fetchHistory(project) }.getOrNull() ?: continue
                         val maxTs = history.maxOfOrNull { it.ts } ?: continue
@@ -118,7 +120,7 @@ class EarpieceService : Service(), TextToSpeech.OnInitListener {
     private fun startInForeground() {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, "耳机播报", NotificationManager.IMPORTANCE_LOW)
+            NotificationChannel(CHANNEL_ID, getString(R.string.notif_channel_name), NotificationManager.IMPORTANCE_LOW)
         )
         val stopIntent = PendingIntent.getService(
             this,
@@ -128,10 +130,10 @@ class EarpieceService : Service(), TextToSpeech.OnInitListener {
         )
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-            .setContentTitle("小易耳机播报")
-            .setContentText("正在监听订阅项目的进展")
+            .setContentTitle(getString(R.string.notif_title))
+            .setContentText(getString(R.string.notif_text))
             .setOngoing(true)
-            .addAction(0, "停止", stopIntent)
+            .addAction(0, getString(R.string.notif_stop), stopIntent)
             .build()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)

@@ -76,7 +76,7 @@ struct QuickCommandIntent: AppIntent {
     }
 }
 
-// ── 语音批准:听到"批准吗?"后直接说"嘿 Siri,告诉小易批准/拒绝" ──
+// ── 语音批准:听到"批准吗?"后直接说"嘿 Siri,告诉答鸭批准/拒绝" ──
 
 enum ApprovalClient {
     static func respond(approve: Bool) async -> Bool {

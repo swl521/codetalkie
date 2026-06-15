@@ -3,7 +3,11 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleName</key>
-	<string>小易</string>
+	<string>答鸭</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>NSCameraUsageDescription</key>
+	<string>扫描电脑上的配对二维码,绑定你的电脑</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
@@ -15,5 +19,9 @@
 	<string>按住说话,把你的指令发给电脑上的 Agent</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>把你说的话转成文字指令</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
 </dict>
 </plist>

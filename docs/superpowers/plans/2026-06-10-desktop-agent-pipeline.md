@@ -19,7 +19,7 @@
 - [ ] **Step 1: git init + 基础文件**
 
 ```bash
-cd $HOME/codetalkie
+cd ~/codetalkie
 git init -b main
 ```
 
@@ -968,7 +968,7 @@ driveCli({
 - [ ] **Step 5: 真机冒烟(关键验证,人工)**
 
 ```bash
-cd $HOME/codetalkie
+cd ~/codetalkie
 node agent/src/main.js --project demo --level 4 "把 1 到 20 之间的质数算出来,只回答结果"
 ```
 

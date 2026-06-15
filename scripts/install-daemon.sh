@@ -4,7 +4,7 @@
 set -euo pipefail
 
 LABEL="com.earpiece.daemon"
-DAEMON_JS="$HOME/codetalkie/agent/src/daemon.js"
+DAEMON_JS="~/codetalkie/agent/src/daemon.js"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 LOG_DIR="$HOME/.earpiece"
 LOG_FILE="$LOG_DIR/daemon.log"

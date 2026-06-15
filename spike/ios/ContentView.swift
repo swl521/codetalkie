@@ -1,6 +1,8 @@
 import SwiftUI
 import UserNotifications
 import AppIntents
+import AVFoundation
+import UIKit
 
 struct PendingApproval: Identifiable, Equatable {
     let id: String
@@ -43,10 +45,21 @@ enum API {
         return req
     }
 
+    // 读请求轮询多中继:试通哪个就把它钉为 activeIndex,后续 base/endpoint(发指令、批准、
+    // 改名、字幕、Siri)全跟着走 —— 主中继挂了(如配额爆),下一拍心跳自动切到备用,用户无感。
     static func json(_ path: String) async -> Any? {
-        guard let (data, resp) = try? await URLSession.shared.data(for: request(path)),
-              (resp as? HTTPURLResponse)?.statusCode == 200 else { return nil }
-        return try? JSONSerialization.jsonObject(with: data)
+        let hs = EarpieceConfig.hosts
+        for (i, h) in hs.enumerated() {
+            var req = URLRequest(url: URL(string: "\(h)\(path)")!)
+            req.timeoutInterval = 8
+            req.setValue("Bearer \(EarpieceConfig.token)", forHTTPHeaderField: "Authorization")
+            if let (data, resp) = try? await URLSession.shared.data(for: req),
+               (resp as? HTTPURLResponse)?.statusCode == 200 {
+                EarpieceConfig.activeIndex = i
+                return try? JSONSerialization.jsonObject(with: data)
+            }
+        }
+        return nil
     }
 }
 
@@ -58,8 +71,26 @@ final class RefreshBus: ObservableObject {
     @Published var activeChat: String? = nil
 }
 
+// 订阅:opt-in,默认空(和 Android 一致)。只有选中的项目才自动同步预览 + 通知;
+// 没选的不打扰,点进去才拉。持久化到 UserDefaults。
+final class SubsStore: ObservableObject {
+    @Published private(set) var subscribed: Set<String>
+    private let key = "iosSubscribedProjects"
+
+    init() {
+        subscribed = Set(UserDefaults.standard.stringArray(forKey: "iosSubscribedProjects") ?? [])
+    }
+    func contains(_ name: String) -> Bool { subscribed.contains(name) }
+    func toggle(_ name: String) {
+        if subscribed.contains(name) { subscribed.remove(name) } else { subscribed.insert(name) }
+        UserDefaults.standard.set(Array(subscribed), forKey: key)
+    }
+}
+
 struct ContentView: View {
     @StateObject private var bus = RefreshBus()
+    @StateObject private var store = Store()
+    @StateObject private var subs = SubsStore()
     @State private var tab = 0
 
     var body: some View {
@@ -72,14 +103,20 @@ struct ContentView: View {
             navigationBar
         }
         .environmentObject(bus)
+        .environmentObject(store)
+        .environmentObject(subs)
+        .onAppear { BroadcastService.shared.startForeground() }  // 启动播报轮询(前台;耳机模式开则后台也念)
+        .sheet(isPresented: $store.showPaywall) {
+            PaywallView().environmentObject(store)
+        }
     }
 
     // Material 3 Navigation Bar(design.google):三项均分、选中项胶囊高亮、图标上文字下
     private var navigationBar: some View {
         HStack(spacing: 0) {
-            navItem(icon: "house.fill", label: "主页", selected: tab == 0) { tab = 0 }
-            navItem(icon: "gearshape.fill", label: "设置", selected: tab == 1) { tab = 1 }
-            navItem(icon: "arrow.clockwise", label: "刷新", selected: false, spinning: bus.spinning) { bus.tick += 1 }
+            navItem(icon: "house.fill", label: String(localized: "主页"), selected: tab == 0) { tab = 0 }
+            navItem(icon: "gearshape.fill", label: String(localized: "设置"), selected: tab == 1) { tab = 1 }
+            navItem(icon: "arrow.clockwise", label: String(localized: "刷新"), selected: false, spinning: bus.spinning) { bus.tick += 1 }
         }
         .padding(.top, 10)
         .padding(.bottom, 6)
@@ -128,12 +165,13 @@ struct HomeView: View {
     @State private var toast = ""
     @State private var collapsed: Set<String> = []  // 折叠起来的引擎分组(claude/codex/hermes)
     @EnvironmentObject private var bus: RefreshBus  // Tab 栏刷新按钮
+    @EnvironmentObject private var subs: SubsStore  // 项目订阅(选择框)
 
     @StateObject private var speech = SpeechInput()
     @State private var micTarget: String? = nil  // 正在按住录音的目标项目;nil=主页大麦克风(需自己报项目名)
     private let pollTimer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
 
-    private var displayName: String { assistantName.isEmpty ? "小易" : assistantName }
+    private var displayName: String { assistantName.isEmpty ? String(localized: "答鸭") : assistantName }
 
     var body: some View {
         NavigationStack {
@@ -179,7 +217,7 @@ struct HomeView: View {
             }
         }
         .alert("给你的助手起个名字", isPresented: $naming) {
-            TextField("比如:小易", text: $nameDraft)
+            TextField("比如:答鸭", text: $nameDraft)
             Button("就叫这个") {
                 let n = nameDraft.trimmingCharacters(in: .whitespaces)
                 if !n.isEmpty { assistantName = n }
@@ -200,8 +238,8 @@ struct HomeView: View {
         HStack(spacing: 8) {
             Circle().fill(status.reachable ? .green : .red).frame(width: 9, height: 9)
             Text(status.reachable
-                 ? (status.running == nil ? "电脑在线 · 空闲" : "正在干:\(status.running!)\(status.queued > 0 ? " · 排队 \(status.queued)" : "")")
-                 : "联不上电脑")
+                 ? (status.running == nil ? String(localized: "电脑在线 · 空闲") : String(localized: "正在干:\(status.running!)") + (status.queued > 0 ? String(localized: " · 排队 \(status.queued)") : ""))
+                 : String(localized: "联不上电脑"))
                 .font(.footnote)
                 .foregroundStyle(.secondary)
             Spacer()
@@ -252,8 +290,8 @@ struct HomeView: View {
             .animation(.easeInOut(duration: 0.5).repeatForever(autoreverses: true), value: speech.recording)
 
             Text(speech.recording
-                 ? (speech.transcript.isEmpty ? "在听…说吧" : speech.transcript)
-                 : "点一下,说\"项目名 + 要做的事\"")
+                 ? (speech.transcript.isEmpty ? String(localized: "在听…说吧") : speech.transcript)
+                 : String(localized: "点一下,说\"项目名 + 要做的事\""))
                 .font(.caption)
                 .foregroundStyle(speech.recording ? .primary : .secondary)
                 .multilineTextAlignment(.center)
@@ -321,6 +359,13 @@ struct HomeView: View {
 
     private func projectRow(_ e: RegEntry) -> some View {
         HStack(spacing: 4) {
+            // 选择框:勾上才自动同步预览 + 通知;不勾的点进去才拉
+            Button { subs.toggle(e.name) } label: {
+                Image(systemName: subs.contains(e.name) ? "checkmark.circle.fill" : "circle")
+                    .font(.title3)
+                    .foregroundStyle(subs.contains(e.name) ? Color.accentColor : Color(.tertiaryLabel))
+            }
+            .buttonStyle(.plain)
             NavigationLink(destination: ChatView(project: e.name)) {
                 HStack {
                     VStack(alignment: .leading, spacing: 1) {
@@ -377,11 +422,11 @@ struct HomeView: View {
     // ── 动作 ──
 
     private func send(_ text: String) {
-        toast = "发送中…"
+        toast = String(localized: "发送中…")
         Task {
             let req = API.request("/command", method: "POST", body: ["text": text])
             let ok = (try? await URLSession.shared.data(for: req)) != nil
-            toast = ok ? "✅ 电脑已接单" : "❌ 发送失败"
+            toast = ok ? String(localized: "✅ 电脑已接单") : String(localized: "❌ 发送失败")
             await refreshAll()
         }
     }
@@ -397,7 +442,7 @@ struct HomeView: View {
         let name = alias.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return }
         if registry.contains(where: { $0.name == name && $0.id != target.id }) {
-            toast = "❌「\(name)」已被占用,换一个"
+            toast = String(localized: "❌「\(name)」已被占用,换一个")
             return
         }
         Task {
@@ -433,7 +478,8 @@ struct HomeView: View {
         }
         if let arr = await API.json("/projects") as? [[String: Any]] {
             for o in arr {
-                if let n = o["name"] as? String { lastLines[n] = o["last"] as? String ?? "" }
+                // 只自动更新订阅项目的预览;没订阅的不打扰(点进去由对话页自己拉)
+                if let n = o["name"] as? String, subs.contains(n) { lastLines[n] = o["last"] as? String ?? "" }
             }
         }
     }
@@ -444,20 +490,89 @@ struct HomeView: View {
 struct SettingsView: View {
     @AppStorage("assistantName") private var assistantName = ""
     @AppStorage("announceLevel") private var announceLevel = 3.0
+    @AppStorage("earpieceBackground") private var earpieceBackground = false  // 耳机模式:锁屏/后台也念
     @AppStorage("connMode") private var connMode = "relay"   // relay 公网 | lan 局域网
     @AppStorage("lanIP") private var lanIP = ""
+    @AppStorage("speechLocale") private var speechLocale = ""  // 语音识别语言,空=系统语言
+    @AppStorage("accountKey") private var accountKey = ""       // 绑定电脑后的账户密钥
+    @State private var pairCode = ""
+    @State private var showScanner = false
+    @FocusState private var codeFocused: Bool
+
+    // 二维码内容 codetalkie://pair?code=XXXXXX → 取 6 位码;也兼容直接是 6 位数字。
+    static func codeFromQR(_ s: String) -> String? {
+        if let r = s.range(of: "code=") {
+            let c = String(s[r.upperBound...]).prefix(while: { $0.isNumber })
+            if c.count == 6 { return String(c) }
+        }
+        let digits = s.filter(\.isNumber)
+        return digits.count == 6 ? digits : nil
+    }
+    @State private var pairMsg = ""
     @State private var nameDraft = ""
     @State private var naming = false
     @State private var token = AppDelegate.deviceTokenString
     @State private var scheduled = ""
     @State private var connTest = ""
     @State private var discovering = false
+    @EnvironmentObject private var store: Store
 
     private let levelNames = ["", "1 · 只报结果和批准", "2 · 加开工", "3 · 阶段汇报", "4 · 每步都报", "5 · 话痨"]
+
+    // App 版本号(便于确认装的是第几版、更新到没)
+    private var appVersion: String {
+        let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+        let b = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
+        return "v\(v) (build \(b))"
+    }
 
     var body: some View {
         NavigationStack {
             Form {
+                Section("绑定电脑") {
+                    if accountKey.isEmpty {
+                        Text("在电脑上运行 答鸭,会显示一个 6 位配对码,输到这里绑定。")
+                            .font(.caption).foregroundStyle(.secondary)
+                        HStack {
+                            TextField("6 位配对码", text: $pairCode)
+                                .keyboardType(.numberPad)
+                                .textFieldStyle(.roundedBorder)
+                                .focused($codeFocused)
+                            Button("绑定") { Task { await claim() } }
+                                .buttonStyle(.borderedProminent)
+                                .disabled(pairCode.trimmingCharacters(in: .whitespaces).count != 6)
+                        }
+                        Button { showScanner = true } label: {
+                            Label("扫码绑定", systemImage: "qrcode.viewfinder")
+                        }
+                        .fullScreenCover(isPresented: $showScanner) {
+                            ZStack(alignment: .top) {
+                                QRScanner { scanned in
+                                    showScanner = false
+                                    if let code = Self.codeFromQR(scanned) {
+                                        pairCode = code
+                                        Task { await claim() }
+                                    } else {
+                                        pairMsg = String(localized: "二维码不对,换成手输 6 位码")
+                                    }
+                                }
+                                .ignoresSafeArea()
+                                HStack {
+                                    Spacer()
+                                    Button("取消") { showScanner = false }
+                                        .padding(12).background(.ultraThinMaterial, in: Capsule()).padding()
+                                }
+                            }
+                        }
+                    } else {
+                        HStack {
+                            Label("已绑定", systemImage: "checkmark.seal.fill").foregroundStyle(.green)
+                            Spacer()
+                            Button("解绑", role: .destructive) { accountKey = ""; pairMsg = "" }
+                        }
+                    }
+                    if !pairMsg.isEmpty { Text(pairMsg).font(.caption).foregroundStyle(pairMsg.hasPrefix("✅") ? .green : .red) }
+                }
                 Section("播报") {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
@@ -471,22 +586,55 @@ struct SettingsView: View {
                         Text("「要批准」和「任务结束」任何级别都会播")
                             .font(.caption2).foregroundStyle(.secondary)
                     }
+                    Toggle("耳机模式(锁屏 / 后台也念)", isOn: $earpieceBackground)
+                        .onChange(of: earpieceBackground) { on in BroadcastService.shared.setBackground(on) }
+                    Text("开了揣兜里、锁屏也能把新播报念进耳机(更费电)。关了只在 App 打开时念。")
+                        .font(.caption2).foregroundStyle(.secondary)
                 }
                 Section("助手") {
                     Button {
                         nameDraft = assistantName
                         naming = true
                     } label: {
-                        HStack { Text("名字").foregroundStyle(.primary); Spacer(); Text(assistantName.isEmpty ? "小易" : assistantName).foregroundStyle(.secondary) }
+                        HStack { Text("名字").foregroundStyle(.primary); Spacer(); Text(assistantName.isEmpty ? "答鸭" : assistantName).foregroundStyle(.secondary) }
                     }
+                }
+                Section("语音识别语言") {
+                    TextField("如 zh-CN / en-US,留空=系统语言", text: $speechLocale)
+                        .autocapitalization(.none)
+                        .disableAutocorrection(true)
+                    Text("说话转文字用这个语言;电脑播报语言在电脑端 ~/.earpiece/settings.json 配 lang")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+                Section("会员") {
+                    if store.isPro {
+                        Label("Pro 已订阅 · 随时随地远程", systemImage: "crown.fill")
+                            .foregroundStyle(.orange)
+                    } else {
+                        Button { store.showPaywall = true } label: {
+                            HStack {
+                                Label("升级 Pro", systemImage: "crown")
+                                Spacer()
+                                Text("\(store.priceText)/月").foregroundStyle(.secondary)
+                            }
+                        }
+                        Text("免费版:和电脑同一 WiFi 时局域网直连。Pro:公网中继,出门用流量也能连。")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                    Button("恢复购买") { Task { await store.restore() } }.font(.footnote)
                 }
                 Section("连接方式") {
                     Picker("连到电脑", selection: $connMode) {
-                        Text("公网中继(任何网络)").tag("relay")
+                        Text(store.isPro ? "公网中继(任何网络)" : "公网中继 🔒 Pro").tag("relay")
                         Text("局域网(同 WiFi)").tag("lan")
                     }
                     .onChange(of: connMode) { mode in
-                        if mode == "lan" && lanIP.isEmpty { autoFindLAN() }  // 切到局域网就自动找
+                        if mode == "relay" && !store.isPro {
+                            connMode = "lan"            // 免费版不能用公网中继:弹回局域网
+                            store.showPaywall = true    // 顺手弹付费墙
+                        } else if mode == "lan" && lanIP.isEmpty {
+                            autoFindLAN()               // 切到局域网就自动找
+                        }
                     }
                     if connMode == "lan" {
                         HStack {
@@ -509,26 +657,39 @@ struct SettingsView: View {
                     if !connTest.isEmpty { Text(connTest).font(.caption).foregroundStyle(.secondary) }
                 }
                 Section("Siri 召唤语(锁屏可用)") {
-                    Label("\"嘿 Siri,告诉\(assistantName.isEmpty ? "小易" : assistantName)\" → 再说指令", systemImage: "mic.fill").font(.footnote)
-                    Label("\"告诉小易让 wiki 跑测试\" 一句直达", systemImage: "bolt.fill").font(.footnote)
-                    Label("听到\"批准吗?\" → \"告诉小易批准\"", systemImage: "checkmark.circle.fill").font(.footnote)
+                    Label("\"嘿 Siri,告诉\(assistantName.isEmpty ? "答鸭" : assistantName)\" → 再说指令", systemImage: "mic.fill").font(.footnote)
+                    Label("\"告诉答鸭让 wiki 跑测试\" 一句直达", systemImage: "bolt.fill").font(.footnote)
+                    Label("听到\"批准吗?\" → \"告诉答鸭批准\"", systemImage: "checkmark.circle.fill").font(.footnote)
                     SiriTipView(intent: SendCommandIntent())
                     ShortcutsLink()
                 }
                 Section("开发者") {
                     Button("复制 APNs token") { UIPasteboard.general.string = token }
                     Button("10 秒后发本地测试通知") {
-                        scheduleTest("wiki", "测试跑完了,三个全部通过", after: 10)
-                        scheduled = "已排,锁屏听"
+                        scheduleTest("wiki", String(localized: "测试跑完了,三个全部通过"), after: 10)
+                        scheduled = String(localized: "已排,锁屏听")
                     }
                     if !scheduled.isEmpty { Text(scheduled).font(.caption).foregroundStyle(.orange) }
+                }
+                Section {
+                    HStack {
+                        Text("版本").foregroundStyle(.secondary)
+                        Spacer()
+                        Text("答鸭 \(appVersion)").foregroundStyle(.secondary)
+                    }
                 }
             }
             .navigationTitle("设置")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("完成") { codeFocused = false }
+                }
+            }
         }
         .alert("改个名字", isPresented: $naming) {
-            TextField("比如:小易", text: $nameDraft)
+            TextField("比如:答鸭", text: $nameDraft)
             Button("保存") {
                 let n = nameDraft.trimmingCharacters(in: .whitespaces)
                 if !n.isEmpty { assistantName = n }
@@ -546,17 +707,39 @@ struct SettingsView: View {
         }
     }
 
+    // 配对认领:凭 6 位码向中继换账户密钥(免鉴权)。配对码只在电脑发码的那个中继上,逐个试。
+    private func claim() async {
+        let code = pairCode.trimmingCharacters(in: .whitespaces)
+        pairMsg = String(localized: "绑定中…")
+        for host in EarpieceConfig.hosts {
+            guard let url = URL(string: "\(host)/pair/claim") else { continue }
+            var req = URLRequest(url: url); req.httpMethod = "POST"; req.timeoutInterval = 8
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            // 带稳定设备 id(去重「已绑 N 台」计数)+ 机型名
+            let devId = UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
+            req.httpBody = try? JSONSerialization.data(withJSONObject: ["code": code, "device": "\(UIDevice.current.name)·\(devId.prefix(8))"])
+            guard let (data, resp) = try? await URLSession.shared.data(for: req),
+                  (resp as? HTTPURLResponse)?.statusCode == 200,
+                  let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let key = j["accountKey"] as? String else { continue }
+            accountKey = key; pairCode = ""; pairMsg = String(localized: "✅ 绑定成功,这台电脑现在归你了")
+            AppDelegate.registerToken()  // 配对后上报 APNs token,推送/批准才到得了这台手机
+            return
+        }
+        pairMsg = String(localized: "配对码无效或已过期,在电脑上重新出码")
+    }
+
     private func autoFindLAN() {
         discovering = true
         connTest = ""
         Task {
             // 先问中继:电脑自己上报的局域网 IP(可靠,不靠扫描)。失败再扫网段兜底。
             if let ip = await lanIPFromRelay() {
-                lanIP = ip; connTest = "✅ 找到电脑 \(ip)"
+                lanIP = ip; connTest = String(localized: "✅ 找到电脑 \(ip)")
             } else if let ip = await LANDiscovery.find() {
-                lanIP = ip; connTest = "✅ 找到电脑 \(ip)"
+                lanIP = ip; connTest = String(localized: "✅ 找到电脑 \(ip)")
             } else {
-                connTest = "❌ 同一 WiFi 下没找到电脑(daemon 开着吗?)"
+                connTest = String(localized: "❌ 同一 WiFi 下没找到电脑(daemon 开着吗?)")
             }
             discovering = false
         }
@@ -565,7 +748,7 @@ struct SettingsView: View {
     // 通过中继读各电脑上报的局域网 IP,挑和手机同网段、且能直连的那台
     private func lanIPFromRelay() async -> String? {
         guard let prefix = LANDiscovery.myPrefix(),
-              let url = URL(string: "https://\(EarpieceConfig.defaultRelayHost)/status") else { return nil }
+              let url = URL(string: "\(EarpieceConfig.hosts.first ?? EarpieceConfig.base)/status") else { return nil }
         var req = URLRequest(url: url); req.timeoutInterval = 6
         req.setValue("Bearer \(EarpieceConfig.token)", forHTTPHeaderField: "Authorization")
         guard let (data, resp) = try? await URLSession.shared.data(for: req),
@@ -582,14 +765,14 @@ struct SettingsView: View {
     }
 
     private func testConn() {
-        connTest = "连接中…"
+        connTest = String(localized: "连接中…")
         Task {
             do {
                 let (_, resp) = try await URLSession.shared.data(for: API.request("/status"))
                 let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
-                connTest = code == 200 ? "✅ 连上了 \(EarpieceConfig.base)" : "❌ 电脑回了 \(code)"
+                connTest = code == 200 ? String(localized: "✅ 连上了 \(EarpieceConfig.base)") : String(localized: "❌ 电脑回了 \(code)")
             } catch {
-                connTest = "❌ 连不上:\(error.localizedDescription)"
+                connTest = String(localized: "❌ 连不上:\(error.localizedDescription)")
             }
         }
     }
@@ -603,5 +786,52 @@ struct SettingsView: View {
         let trigger = UNTimeIntervalNotificationTrigger(timeInterval: seconds, repeats: false)
         UNUserNotificationCenter.current().add(
             UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: trigger))
+    }
+}
+
+// 扫码:相机扫二维码,扫到一个就回调字符串(配对页用)。AVFoundation 原生,无第三方依赖。
+struct QRScanner: UIViewControllerRepresentable {
+    var onScan: (String) -> Void
+    func makeUIViewController(context: Context) -> ScannerVC {
+        let vc = ScannerVC(); vc.onScan = onScan; return vc
+    }
+    func updateUIViewController(_ vc: ScannerVC, context: Context) {}
+
+    final class ScannerVC: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
+        var onScan: ((String) -> Void)?
+        private let session = AVCaptureSession()
+        private var handled = false
+
+        override func viewDidLoad() {
+            super.viewDidLoad()
+            view.backgroundColor = .black
+            guard let device = AVCaptureDevice.default(for: .video),
+                  let input = try? AVCaptureDeviceInput(device: device),
+                  session.canAddInput(input) else { return }
+            session.addInput(input)
+            let output = AVCaptureMetadataOutput()
+            guard session.canAddOutput(output) else { return }
+            session.addOutput(output)
+            output.setMetadataObjectsDelegate(self, queue: .main)
+            output.metadataObjectTypes = [.qr]
+            let preview = AVCaptureVideoPreviewLayer(session: session)
+            preview.videoGravity = .resizeAspectFill
+            preview.frame = view.layer.bounds
+            view.layer.addSublayer(preview)
+            DispatchQueue.global(qos: .userInitiated).async { self.session.startRunning() }
+        }
+        override func viewDidDisappear(_ animated: Bool) {
+            super.viewDidDisappear(animated)
+            if session.isRunning { session.stopRunning() }
+        }
+        func metadataOutput(_ output: AVCaptureMetadataOutput, didOutput objs: [AVMetadataObject],
+                            from connection: AVCaptureConnection) {
+            guard !handled,
+                  let obj = objs.first as? AVMetadataMachineReadableCodeObject,
+                  let s = obj.stringValue else { return }
+            handled = true
+            session.stopRunning()
+            onScan?(s)
+        }
     }
 }

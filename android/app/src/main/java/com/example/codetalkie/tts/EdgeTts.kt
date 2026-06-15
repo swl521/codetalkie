@@ -2,6 +2,7 @@ package com.example.codetalkie.tts
 
 import android.content.Context
 import android.media.MediaPlayer
+import com.example.codetalkie.R
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -28,14 +29,17 @@ import java.util.UUID
  */
 object EdgeTts {
 
-    /** 常用中文音色(name 进 SSML;label 给设置页显示)。 */
-    val VOICES = listOf(
-        "zh-CN-XiaoxiaoNeural" to "晓晓(女·自然)",
-        "zh-CN-XiaoyiNeural" to "晓伊(女·活泼)",
-        "zh-CN-YunxiNeural" to "云希(男·清朗)",
-        "zh-CN-YunyangNeural" to "云扬(男·新闻)",
-        "zh-CN-YunjianNeural" to "云健(男·浑厚)",
-        "zh-CN-liaoning-XiaobeiNeural" to "晓北(女·东北)",
+    /** 常用音色全集(中英都列;name 进 SSML,label 是 strings.xml 资源键,随语言包翻译)。 */
+    val VOICES: List<Pair<String, Int>> = listOf(
+        "zh-CN-XiaoxiaoNeural" to R.string.voice_zh_xiaoxiao,
+        "zh-CN-XiaoyiNeural" to R.string.voice_zh_xiaoyi,
+        "zh-CN-YunxiNeural" to R.string.voice_zh_yunxi,
+        "zh-CN-YunyangNeural" to R.string.voice_zh_yunyang,
+        "zh-CN-YunjianNeural" to R.string.voice_zh_yunjian,
+        "zh-CN-liaoning-XiaobeiNeural" to R.string.voice_zh_xiaobei,
+        "en-US-AriaNeural" to R.string.voice_en_aria,
+        "en-US-JennyNeural" to R.string.voice_en_jenny,
+        "en-US-GuyNeural" to R.string.voice_en_guy,
     )
 
     // 开源 edge-tts 通用公开常量(Edge 浏览器朗读通道)
@@ -80,7 +84,9 @@ object EdgeTts {
                         "Content-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n" +
                         """{"context":{"synthesis":{"audio":{"metadataoptions":{"sentenceBoundaryEnabled":"false","wordBoundaryEnabled":"false"},"outputFormat":"audio-24khz-48kbitrate-mono-mp3"}}}}""",
                 )
-                val ssml = "<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='zh-CN'>" +
+                // xml:lang 跟随音色名前缀(如 zh-CN-XiaoxiaoNeural → zh-CN,en-US-AriaNeural → en-US)
+                val ssmlLang = voice.split("-").take(2).joinToString("-")
+                val ssml = "<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='$ssmlLang'>" +
                     "<voice name='$voice'><prosody pitch='+0Hz' rate='${if (ratePct >= 0) "+" else ""}$ratePct%' volume='+0%'>" +
                     escapeXml(text) + "</prosody></voice></speak>"
                 webSocket.send(

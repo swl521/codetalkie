@@ -26,7 +26,7 @@ Codex 驱动(`--agent codex`,0.139.0 实测,resume 顺序确认)、App 图标、
 | 06-11 | **MVP 范围变更:computer use 语音场景纳入**(用户拍板) |
 | 06-11 | **真任务全链路冒烟通过**:Claude 真实跑任务,Mac 中文播报全程;**resume 持续对话验证**(追问"最大的质数"答 19) |
 | 06-11 | 无头认证方案落地:`claude setup-token` 长期令牌 → `~/.earpiece/oauth-token`,Agent 自动注入(onboarding 流程原型) |
-| 06-11 | .p8 到位(KeyID XXXXXXXXXX),APNs 首推 200;push sink 接入管线(`--push`) |
+| 06-11 | .p8 到位(KeyID YOUR_KEY_ID),APNs 首推 200;push sink 接入管线(`--push`) |
 | 06-11 | **🎉 产品完整闭环**:真任务(写诗)全程推送锁屏 iPhone,Siri AirPods 朗读 |
 | 06-11 | 多机路由(relay 按机器分信箱)+ Windows 移植 + Hermes 引擎接入;三机四引擎全通 |
 | 06-11 | Hermes 会话即项目(扫描/过滤/--resume 路由)+ 历史回填(export);iOS 引擎分组可折叠 |

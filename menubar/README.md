@@ -11,7 +11,7 @@
   点击某项后通过 AppleScript 打开 Terminal,执行
   `cd <目录> && /opt/homebrew/bin/claude --resume <sessionId>`
   (用原始路径而不是 `claude` alias,因为 Terminal 新开 shell 执行 do script 时 alias 不可用)。
-- **启动 daemon** — 直接 spawn `node $HOME/codetalkie/agent/src/daemon.js`,
+- **启动 daemon** — 直接 spawn `node ~/codetalkie/agent/src/daemon.js`,
   日志追加到 `~/.earpiece/daemon.log`;daemon 已在跑时置灰。
 - **停止 daemon** — 先尝试 `launchctl bootout gui/$UID/com.earpiece.daemon`
   (LaunchAgent 管理的实例必须走 launchctl,否则 KeepAlive 会拉起来),

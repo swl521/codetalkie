@@ -16,6 +16,8 @@
 		A00000000000000000000007 /* SpeechInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000009 /* SpeechInput.swift */; };
 		A00000000000000000000008 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000010 /* ChatView.swift */; };
 		A00000000000000000000009 /* LANDiscovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000011 /* LANDiscovery.swift */; };
+		A00000000000000000000010 /* Pro.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000012 /* Pro.swift */; };
+		A00000000000000000000020 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = G00000000000000000000001 /* Localizable.strings */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -30,8 +32,23 @@
 		B00000000000000000000009 /* SpeechInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechInput.swift; sourceTree = "<group>"; };
 		B00000000000000000000010 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		B00000000000000000000011 /* LANDiscovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LANDiscovery.swift; sourceTree = "<group>"; };
+		B00000000000000000000012 /* Pro.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Pro.swift; sourceTree = "<group>"; };
 		C00000000000000000000001 /* EarpieceSpike.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = EarpieceSpike.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		H00000000000000000000001 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
+		H00000000000000000000002 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXVariantGroup section */
+		G00000000000000000000001 /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				H00000000000000000000001 /* en */,
+				H00000000000000000000002 /* zh-Hans */,
+			);
+			name = Localizable.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		D00000000000000000000001 /* Frameworks */ = {
@@ -55,9 +72,11 @@
 				B00000000000000000000009 /* SpeechInput.swift */,
 				B00000000000000000000010 /* ChatView.swift */,
 				B00000000000000000000011 /* LANDiscovery.swift */,
+				B00000000000000000000012 /* Pro.swift */,
 				B00000000000000000000004 /* EarpieceSpike.entitlements */,
 				B00000000000000000000007 /* Info.plist */,
 				B00000000000000000000008 /* Assets.xcassets */,
+				G00000000000000000000001 /* Localizable.strings */,
 				E00000000000000000000002 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -107,11 +126,12 @@
 			};
 			buildConfigurationList = 100000000000000000000001 /* Build configuration list for PBXProject "EarpieceSpike" */;
 			compatibilityVersion = "Xcode 14.0";
-			developmentRegion = en;
+			developmentRegion = "zh-Hans";
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
 				Base,
+				"zh-Hans",
 			);
 			mainGroup = E00000000000000000000001;
 			productRefGroup = E00000000000000000000002 /* Products */;
@@ -136,6 +156,7 @@
 				A00000000000000000000007 /* SpeechInput.swift in Sources */,
 				A00000000000000000000008 /* ChatView.swift in Sources */,
 				A00000000000000000000009 /* LANDiscovery.swift in Sources */,
+				A00000000000000000000010 /* Pro.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -147,6 +168,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A00000000000000000000006 /* Assets.xcassets in Resources */,
+				A00000000000000000000020 /* Localizable.strings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -192,12 +214,12 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = EarpieceSpike.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 13;
 				DEVELOPMENT_TEAM = YOUR_TEAM_ID;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Info.plist;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				INFOPLIST_KEY_CFBundleDisplayName = "小易";
+				INFOPLIST_KEY_CFBundleDisplayName = "答鸭";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -221,12 +243,12 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = EarpieceSpike.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 13;
 				DEVELOPMENT_TEAM = YOUR_TEAM_ID;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Info.plist;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				INFOPLIST_KEY_CFBundleDisplayName = "小易";
+				INFOPLIST_KEY_CFBundleDisplayName = "答鸭";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

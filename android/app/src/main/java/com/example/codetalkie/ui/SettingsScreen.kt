@@ -19,6 +19,9 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import android.content.Intent
+import android.net.Uri
+import com.example.codetalkie.data.RelayClient
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -32,8 +35,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import com.example.codetalkie.R
 import com.example.codetalkie.data.SettingsRepository
 import com.example.codetalkie.service.EarpieceService
 import com.example.codetalkie.tts.EdgePlayer
@@ -42,7 +47,11 @@ import kotlinx.coroutines.launch
 import java.util.Locale
 
 @Composable
-fun SettingsScreen(modifier: Modifier = Modifier) {
+fun SettingsScreen(
+    modifier: Modifier = Modifier,
+    pairCode: String? = null,
+    onPairCodeConsumed: () -> Unit = {},
+) {
     val context = LocalContext.current
     val repo = remember { SettingsRepository(context.applicationContext) }
     val scope = rememberCoroutineScope()
@@ -52,17 +61,25 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
     var token by remember { mutableStateOf("") }
     var rate by remember { mutableFloatStateOf(SettingsRepository.DEFAULT_TTS_RATE) }
     var loaded by remember { mutableStateOf(false) }
+    var proMsg by remember { mutableStateOf("") }
 
-    // 音色列表:临时 TTS 实例枚举中文音色(选中即试听);随组合体生命周期释放
+    // 朗读语言跟随语言包:tts_locale 资源(如 zh-CN / en-US)
+    val ttsLocale = remember { Locale.forLanguageTag(context.getString(R.string.tts_locale)) }
+    // 部分引擎用 ISO 639-3 报中文为 "cmn"
+    val ttsLanguages = remember(ttsLocale) {
+        if (ttsLocale.language == "zh") setOf("zh", "cmn") else setOf(ttsLocale.language)
+    }
+
+    // 音色列表:临时 TTS 实例枚举当前语言的音色(选中即试听);随组合体生命周期释放
     var voices by remember { mutableStateOf<List<Voice>>(emptyList()) }
     var previewTts by remember { mutableStateOf<TextToSpeech?>(null) }
     DisposableEffect(Unit) {
         var t: TextToSpeech? = null
         t = TextToSpeech(context) { st ->
             if (st == TextToSpeech.SUCCESS) {
-                t?.language = Locale.SIMPLIFIED_CHINESE
+                t?.language = ttsLocale
                 voices = t?.voices.orEmpty()
-                    .filter { v -> v.locale.language in setOf("zh", "cmn") && !v.isNetworkConnectionRequired }
+                    .filter { v -> v.locale.language in ttsLanguages && !v.isNetworkConnectionRequired }
                     .sortedBy { it.name }
                 previewTts = t
             }
@@ -73,13 +90,13 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
         previewTts?.let { p ->
             if (voice != null) p.voice = voice
             p.setSpeechRate(rate)
-            p.speak("你好,我是小易,这是这个声音的效果。", TextToSpeech.QUEUE_FLUSH, null, "preview")
+            p.speak(context.getString(R.string.tts_preview_system), TextToSpeech.QUEUE_FLUSH, null, "preview")
         }
     }
     // 云端试听(微软 Edge 神经语音)
     val edgePlayer = remember { EdgePlayer(context.applicationContext) }
     fun previewEdge(voice: String) {
-        edgePlayer.enqueue("你好,我是小易,这是云端声音的效果。", voice, rate)
+        edgePlayer.enqueue(context.getString(R.string.tts_preview_edge), voice, rate)
     }
 
     // 首次进入用持久化值填充本地编辑态,之后不再覆盖(避免打字被冲掉)
@@ -102,11 +119,48 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text("连接", style = MaterialTheme.typography.titleMedium)
+        PairingSection(
+            settings = s,
+            repo = repo,
+            prefillCode = pairCode,
+            onPrefillConsumed = onPairCodeConsumed,
+        )
+
+        HorizontalDivider()
+
+        // 会员:免费=局域网;Pro=公网中继(随时随地远程)。Android 走 Stripe 网页结账。
+        Text("会员", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "免费版:和电脑同一 WiFi 时局域网直连。Pro:公网中继,出门用流量也能连。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Button(
+            onClick = {
+                scope.launch {
+                    proMsg = "正在打开结账页…"
+                    val u = RelayClient(s.relayUrl, s.bearer).proCheckout()
+                    if (u != null) {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(u)))
+                        proMsg = "已在浏览器打开,付完回来即生效"
+                    } else {
+                        proMsg = "暂不可用(中继还没配置 Stripe?稍后再试)"
+                    }
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("升级 Pro · \$4.99/月") }
+        if (proMsg.isNotBlank()) {
+            Text(proMsg, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+        }
+
+        HorizontalDivider()
+
+        Text(stringResource(R.string.settings_section_connection), style = MaterialTheme.typography.titleMedium)
         OutlinedTextField(
             value = url,
             onValueChange = { url = it },
-            label = { Text("Relay 地址") },
+            label = { Text(stringResource(R.string.settings_relay_url)) },
             placeholder = { Text(SettingsRepository.DEFAULT_RELAY_URL) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
@@ -114,7 +168,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
         OutlinedTextField(
             value = token,
             onValueChange = { token = it },
-            label = { Text("Token") },
+            label = { Text(stringResource(R.string.settings_token)) },
             singleLine = true,
             visualTransformation = PasswordVisualTransformation(),
             modifier = Modifier.fillMaxWidth(),
@@ -125,20 +179,23 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                 repo.setToken(token.trim())
             }
         }) {
-            Text("保存连接设置")
+            Text(stringResource(R.string.settings_save_connection))
         }
 
         HorizontalDivider()
 
-        Text("耳机播报", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.settings_section_earpiece), style = MaterialTheme.typography.titleMedium)
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("播报开关", modifier = Modifier.weight(1f))
+            Text(stringResource(R.string.settings_announce_enabled), modifier = Modifier.weight(1f))
             Switch(
                 checked = s.announceEnabled,
                 onCheckedChange = { v -> scope.launch { repo.setAnnounceEnabled(v) } },
             )
         }
-        Text("TTS 语速 ${"%.1f".format(rate)}x", style = MaterialTheme.typography.bodyMedium)
+        Text(
+            stringResource(R.string.settings_tts_rate, "%.1f".format(rate)),
+            style = MaterialTheme.typography.bodyMedium,
+        )
         Slider(
             value = rate,
             onValueChange = { rate = it },
@@ -146,7 +203,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             valueRange = 0.5f..2.0f,
             steps = 14,
         )
-        Text("语音引擎", style = MaterialTheme.typography.bodyMedium)
+        Text(stringResource(R.string.settings_voice_engine), style = MaterialTheme.typography.bodyMedium)
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth()
@@ -156,8 +213,8 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                 scope.launch { repo.setTtsMode(SettingsRepository.MODE_EDGE) }
             })
             Column {
-                Text("微软云端神经语音(推荐)", style = MaterialTheme.typography.bodyMedium)
-                Text("真人级音质 · 免费无需账号 · 需联网", style = MaterialTheme.typography.bodySmall,
+                Text(stringResource(R.string.settings_engine_edge), style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.settings_engine_edge_desc), style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
@@ -170,15 +227,15 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                 scope.launch { repo.setTtsMode(SettingsRepository.MODE_SYSTEM) }
             })
             Column {
-                Text("系统 TTS", style = MaterialTheme.typography.bodyMedium)
-                Text("离线可用,音质一般", style = MaterialTheme.typography.bodySmall,
+                Text(stringResource(R.string.settings_engine_system), style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.settings_engine_system_desc), style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
 
-        Text("朗读声音(点选即试听)", style = MaterialTheme.typography.bodyMedium)
+        Text(stringResource(R.string.settings_voice_section), style = MaterialTheme.typography.bodyMedium)
         if (s.ttsMode == SettingsRepository.MODE_EDGE) {
-            EdgeTts.VOICES.forEach { (name, label) ->
+            EdgeTts.VOICES.forEach { (name, labelRes) ->
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth()
@@ -187,7 +244,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                     RadioButton(selected = s.edgeVoice == name, onClick = {
                         scope.launch { repo.setEdgeVoice(name) }; previewEdge(name)
                     })
-                    Text(label, style = MaterialTheme.typography.bodyMedium)
+                    Text(stringResource(labelRes), style = MaterialTheme.typography.bodyMedium)
                 }
             }
         } else {
@@ -200,7 +257,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                 RadioButton(selected = s.ttsVoice.isBlank(), onClick = {
                     scope.launch { repo.setTtsVoice("") }; preview(null)
                 })
-                Text("系统默认", style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(R.string.settings_voice_system_default), style = MaterialTheme.typography.bodyMedium)
             }
             voices.forEach { v ->
                 Row(
@@ -220,7 +277,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             }
             if (voices.isEmpty()) {
                 Text(
-                    "没有找到本地中文音色,可在系统设置里给 TTS 引擎下载中文语音包",
+                    stringResource(R.string.settings_no_local_voices),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -229,20 +286,37 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = { EarpieceService.start(context) }) {
-                Text("启动播报服务")
+                Text(stringResource(R.string.settings_start_service))
             }
             OutlinedButton(onClick = { EarpieceService.stop(context) }) {
-                Text("停止")
+                Text(stringResource(R.string.settings_stop_service))
             }
         }
+        val listSeparator = stringResource(R.string.list_separator)
+        val subscribedNone = stringResource(R.string.settings_subscribed_none)
         Text(
-            text = "已订阅项目: " +
-                s.subscribedProjects.sorted().joinToString("、").ifEmpty { "无(在主页点铃铛订阅)" },
+            text = stringResource(
+                R.string.settings_subscribed_projects,
+                s.subscribedProjects.sorted().joinToString(listSeparator).ifEmpty { subscribedNone },
+            ),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
-            text = "v1 为前台服务轮询 + 本机 TTS;FCM 推送通道二期接入。",
+            text = stringResource(R.string.settings_v1_note),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        // 版本号:便于确认装的是第几版、更新到没
+        val appVer = remember {
+            runCatching {
+                val pi = context.packageManager.getPackageInfo(context.packageName, 0)
+                @Suppress("DEPRECATION")
+                "答鸭 v${pi.versionName} (build ${pi.versionCode})"
+            }.getOrDefault("答鸭 v?")
+        }
+        Text(
+            text = appVer,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

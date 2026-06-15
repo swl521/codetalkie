@@ -1,4 +1,90 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">小易</string>
+    <string name="app_name">答鸭</string>
+
+    <!-- 语言相关行为:贡献新语言包时这两个键必须一并翻译/调整 -->
+    <!-- TTS 朗读语言(BCP-47),EarpieceService 和设置页音色枚举都用它 -->
+    <string name="tts_locale">zh-CN</string>
+    <!-- 微软 Edge 云端神经语音的默认音色,需与 tts_locale 语言一致 -->
+    <string name="edge_default_voice">zh-CN-XiaoxiaoNeural</string>
+    <!-- 列表连接符(如在线机器名之间) -->
+    <string name="list_separator">"、"</string>
+
+    <!-- 底部导航 -->
+    <string name="tab_home">主页</string>
+    <string name="tab_settings">设置</string>
+    <string name="tab_refresh">刷新</string>
+
+    <!-- 主页 -->
+    <string name="home_no_online_machines">无在线机器</string>
+    <string name="home_online_machines">在线: %1$s</string>
+    <string name="error_network">网络错误</string>
+    <string name="action_expand">展开</string>
+    <string name="action_collapse">折叠</string>
+    <string name="action_subscribe">订阅播报</string>
+    <string name="action_unsubscribe">取消播报订阅</string>
+
+    <!-- 对话页 -->
+    <string name="chat_back">返回</string>
+    <string name="chat_input_placeholder">发指令给 %1$s…</string>
+    <string name="chat_send">发送</string>
+
+    <!-- 绑定电脑(配对) -->
+    <string name="pairing_section">绑定电脑</string>
+    <string name="pairing_hint">在电脑上运行配对命令,把显示的 6 位配对码填到下面,或扫描二维码。</string>
+    <string name="pairing_code_label">配对码</string>
+    <string name="pairing_code_placeholder">输入 6 位配对码</string>
+    <string name="pairing_bind">绑定</string>
+    <string name="pairing_scan">扫描二维码</string>
+    <string name="pairing_bound">已绑定 ✓</string>
+    <string name="pairing_unbind">解绑</string>
+    <string name="pairing_success">绑定成功</string>
+    <string name="pairing_error_invalid">配对码无效或过期</string>
+    <string name="pairing_error_rate">尝试太频繁,请稍后再试</string>
+    <string name="pairing_error_network">网络错误,请检查 Relay 地址</string>
+    <string name="pairing_need_relay">请先在下方填写 Relay 地址</string>
+    <string name="pairing_camera_denied">需要相机权限才能扫码</string>
+
+    <!-- 设置页 -->
+    <string name="settings_section_connection">连接</string>
+    <string name="settings_relay_url">Relay 地址</string>
+    <string name="settings_token">Token</string>
+    <string name="settings_save_connection">保存连接设置</string>
+    <string name="settings_section_earpiece">耳机播报</string>
+    <string name="settings_announce_enabled">播报开关</string>
+    <string name="settings_tts_rate">TTS 语速 %1$sx</string>
+    <string name="settings_voice_engine">语音引擎</string>
+    <string name="settings_engine_edge">微软云端神经语音(推荐)</string>
+    <string name="settings_engine_edge_desc">真人级音质 · 免费无需账号 · 需联网</string>
+    <string name="settings_engine_system">系统 TTS</string>
+    <string name="settings_engine_system_desc">离线可用,音质一般</string>
+    <string name="settings_voice_section">朗读声音(点选即试听)</string>
+    <string name="settings_voice_system_default">系统默认</string>
+    <string name="settings_no_local_voices">没有找到本地中文音色,可在系统设置里给 TTS 引擎下载中文语音包</string>
+    <string name="settings_start_service">启动播报服务</string>
+    <string name="settings_stop_service">停止</string>
+    <string name="settings_subscribed_projects">已订阅项目: %1$s</string>
+    <string name="settings_subscribed_none">无(在主页点铃铛订阅)</string>
+    <string name="settings_v1_note">v1 为前台服务轮询 + 本机 TTS;FCM 推送通道二期接入。</string>
+
+    <!-- 试听句子 -->
+    <string name="tts_preview_system">你好,我是答鸭,这是这个声音的效果。</string>
+    <string name="tts_preview_edge">你好,我是答鸭,这是云端声音的效果。</string>
+
+    <!-- 前台服务通知 -->
+    <string name="notif_channel_name">耳机播报</string>
+    <string name="notif_title">答鸭耳机播报</string>
+    <string name="notif_text">正在监听订阅项目的进展</string>
+    <string name="notif_stop">停止</string>
+
+    <!-- Edge 云端音色标签(音色全集在 EdgeTts.VOICES,标签随语言包翻译) -->
+    <string name="voice_zh_xiaoxiao">晓晓(女·自然)</string>
+    <string name="voice_zh_xiaoyi">晓伊(女·活泼)</string>
+    <string name="voice_zh_yunxi">云希(男·清朗)</string>
+    <string name="voice_zh_yunyang">云扬(男·新闻)</string>
+    <string name="voice_zh_yunjian">云健(男·浑厚)</string>
+    <string name="voice_zh_xiaobei">晓北(女·东北)</string>
+    <string name="voice_en_aria">Aria(女·自然·英语)</string>
+    <string name="voice_en_jenny">Jenny(女·亲切·英语)</string>
+    <string name="voice_en_guy">Guy(男·清晰·英语)</string>
 </resources>

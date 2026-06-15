@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -39,10 +40,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.codetalkie.R
 import com.example.codetalkie.data.HistoryLine
 import com.example.codetalkie.data.RelayClient
 import com.example.codetalkie.data.SettingsRepository
@@ -73,12 +76,28 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     suspend fun refresh(project: String) {
         try {
             val s = settingsRepo.current()
-            _lines.value = RelayClient(s.relayUrl, s.token).fetchHistory(project)
+            _lines.value = RelayClient(s.relayUrl, s.bearer).fetchHistory(project)
             _error.value = null
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             _error.value = e.message
+        }
+    }
+
+    /** 强制同步:戳电脑重扫重推该项目,稍等再拉——治「连中继都落后」。 */
+    fun forceSync(project: String) {
+        viewModelScope.launch {
+            try {
+                val s = settingsRepo.current()
+                RelayClient(s.relayUrl, s.bearer).resync(project)
+                delay(700L)            // 给电脑重扫+重推一点时间
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _error.value = e.message
+            }
+            refresh(project)
         }
     }
 
@@ -89,7 +108,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             _sending.value = true
             try {
                 val s = settingsRepo.current()
-                RelayClient(s.relayUrl, s.token).sendCommand("$project $text")
+                RelayClient(s.relayUrl, s.bearer).sendCommand("$project $text")
                 refresh(project)
             } catch (e: CancellationException) {
                 throw e
@@ -134,7 +153,15 @@ fun ChatScreen(
                 title = { Text(projectName) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.chat_back),
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { viewModel.forceSync(projectName) }) {  // 强制同步:戳电脑重推
+                        Icon(Icons.Filled.Refresh, contentDescription = "强制同步")
                     }
                 },
             )
@@ -169,7 +196,7 @@ fun ChatScreen(
                     value = input,
                     onValueChange = { input = it },
                     modifier = Modifier.weight(1f),
-                    placeholder = { Text("发指令给 $projectName…") },
+                    placeholder = { Text(stringResource(R.string.chat_input_placeholder, projectName)) },
                     maxLines = 3,
                 )
                 Spacer(Modifier.width(8.dp))
@@ -182,7 +209,7 @@ fun ChatScreen(
                 ) {
                     Icon(
                         Icons.AutoMirrored.Filled.Send,
-                        contentDescription = "发送",
+                        contentDescription = stringResource(R.string.chat_send),
                         tint = MaterialTheme.colorScheme.primary,
                     )
                 }

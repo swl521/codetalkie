@@ -48,6 +48,21 @@ adb install app/build/outputs/apk/debug/app-debug.apk
 2. 主页点项目行的铃铛订阅播报(会自动拉起前台服务),戴上蓝牙耳机即可
 3. 点项目进对话页看字幕、发指令
 
+## 多语言
+
+所有用户可见文案都在资源文件里,代码零硬编码。默认语言为中文(`res/values/strings.xml`),已内置英文包(`res/values-en/strings.xml`)。
+
+**加一门语言 = 放一个文件:**
+
+1. 复制 `android/app/src/main/res/values/strings.xml` 到 `values-<语言码>/strings.xml`(如日语 `values-ja/`、法语 `values-fr/`)
+2. 翻译所有 `<string>` 值(键名不动;`%1$s` 占位符保留)
+3. 两个**行为键**必须一并改,语音输出才会跟着语言走:
+   - `tts_locale` — TTS 朗读语言(BCP-47,如 `ja-JP`):`EarpieceService` 的系统 TTS 语言和设置页的本地音色枚举都读它
+   - `edge_default_voice` — 微软 Edge 云端神经语音的默认音色(如 `ja-JP-NanamiNeural`),需与 `tts_locale` 语言一致
+4. (可选)在 `tts/EdgeTts.kt` 的 `VOICES` 列表加该语言的云端音色,并在各语言包里加对应 `voice_*` 标签键
+
+系统按设备语言自动选包,没有对应包时回落到默认(中文)。试听句子(`tts_preview_system` / `tts_preview_edge`)请用目标语言自然改写,不要直译。
+
 ## 权限说明
 
 | 权限 | 用途 |

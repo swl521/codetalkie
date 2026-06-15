@@ -11,11 +11,13 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { runTask } from './runTask.js';
 import { summarizeToolRequest } from './translate.js';
+import { t } from './i18n.js';
 import { speak } from './speaker.js';
 import { buildPayload, sendPush } from './apns.js';
 import { scanClaude, scanCodex, scanHermesSessions, exportHermesSession, parseHermesHistory } from './scanProjects.js';
 import { buildRegistry, resolveSpoken, saveAlias, loadAliases } from './registry.js';
 import { findHubSession, runViaHub } from './hubBridge.js';
+import { resolveAccountKey } from './account.js';
 import { extractTail } from './transcriptTail.js';
 
 // 纯逻辑核心,可注入假 runner / announce 测试
@@ -31,7 +33,7 @@ export function createDaemon({
   const approvals = new Map(); // id → { res(挂起的HTTP响应), timer, input }
 
   // 把挂起的权限请求收口:approve=true 放行(回 allow+原参数),false 拒绝
-  function respondApproval(id, approve, denyMsg = '用户拒绝了') {
+  function respondApproval(id, approve, denyMsg = t('userDenied')) {
     const a = approvals.get(id);
     if (!a) return false;
     clearTimeout(a.timer);
@@ -40,7 +42,7 @@ export function createDaemon({
     a.res.end(JSON.stringify(approve
       ? { behavior: 'allow', updatedInput: a.input }
       : { behavior: 'deny', message: denyMsg }));
-    logLine({ project: a.project, role: 'event', text: approve ? '✅ 已批准' : `⛔ ${denyMsg}` });
+    logLine({ project: a.project, role: 'event', text: approve ? t('approved') : t('denied', { reason: denyMsg }) });
     return true;
   }
 
@@ -77,8 +79,8 @@ export function createDaemon({
   function enqueueText(text) {
     const job = parseCommand(text);
     if (job.ambiguous) {
-      const msg = `有两个项目都叫「${job.ambiguous}」,先在手机上改个名再叫我`;
-      notify({ project: '小易', text: msg });
+      const msg = t('dupName', { name: job.ambiguous });
+      notify({ project: t('assistantName'), text: msg });
       logLine({ project: job.ambiguous, role: 'event', text: `⚠️ ${msg}` });
       return job;
     }
@@ -86,7 +88,7 @@ export function createDaemon({
     pump();
     logLine({ project: job.project, role: 'user', text: (job.agent === 'codex' ? '[codex] ' : '') + job.prompt });
     // 收到即回显任务(代替"开始干活了"):让用户确认指令到位、并复述任务
-    notify({ project: job.project, text: `收到,${job.prompt}` });
+    notify({ project: job.project, text: t('received', { prompt: job.prompt }) });
     return job;
   }
 
@@ -111,9 +113,9 @@ export function createDaemon({
       const id = randomUUID().slice(0, 8);
       const project = current?.project ?? 'agent';
       const summary = summarizeToolRequest(parsed.tool_name, parsed.input);
-      const timer = setTimeout(() => respondApproval(id, false, '等太久没人批,先拒绝了'), approvalTimeoutMs);
+      const timer = setTimeout(() => respondApproval(id, false, t('approvalTimeout')), approvalTimeoutMs);
       approvals.set(id, { id, res, timer, input: parsed.input ?? {}, project, summary });
-      logLine({ project, role: 'event', text: `🔔 ${summary},等待批准` });
+      logLine({ project, role: 'event', text: t('waitingApproval', { summary }) });
       announce({ id, project, summary });
       return; // res 不结束,长挂等 /approval/respond
     }
@@ -196,6 +198,9 @@ export async function pullLoop(relay, daemon, log = console.log) {
         } else if (m.type === 'settings') {
           await daemon.onSettings?.(m.body ?? {});
           log(`☁ 收到设置: ${JSON.stringify(m.body)}`);
+        } else if (m.type === 'resync') {
+          await daemon.onResync?.(m.body ?? {});
+          log(`☁ 强制重推 [${m.body?.project}]`);
         }
       }
     } catch {
@@ -217,6 +222,21 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const dir = join(homedir(), '.earpiece');
   mkdirSync(dir, { recursive: true });
 
+  // 启动即清理 agent-hub 注册表里的死进程残留,避免越堆越乱(抗重启:每次开机/重启都自清)。
+  try {
+    const regPath = join(homedir(), '.claude', 'agent-hub', 'registry.json');
+    if (existsSync(regPath)) {
+      const reg = JSON.parse(readFileSync(regPath, 'utf8'));
+      let changed = false;
+      for (const [k, v] of Object.entries(reg.sessions ?? {})) {
+        let alive = false;
+        try { process.kill(v.pid, 0); alive = true; } catch { /* 进程已死 */ }
+        if (!alive) { delete reg.sessions[k]; changed = true; }
+      }
+      if (changed) writeFileSync(regPath, JSON.stringify(reg, null, 2));
+    }
+  } catch { /* 注册表坏/没装 hub:忽略 */ }
+
   const tokenPath = join(dir, 'lan-token');
   if (!existsSync(tokenPath)) {
     writeFileSync(tokenPath, randomBytes(16).toString('hex'), { mode: 0o600 });
@@ -233,12 +253,19 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'spike', 'apns.json'),
   ].find(existsSync) ?? null;
   const apnsConfig = apnsPath ? JSON.parse(readFileSync(apnsPath, 'utf8')) : null;
+  // 动态设备 token:手机上报到中继,daemon 周期取来覆盖静态 deviceToken(治"重装后通知到不了")。
+  let liveApnsToken = null;
+  const apnsCfg = () => (liveApnsToken && apnsConfig ? { ...apnsConfig, deviceToken: liveApnsToken } : apnsConfig);
 
   // 用户设置(播报级别等):手机滑块改完经 relay 下发,落盘生效
   const settingsPath = join(dir, 'settings.json');
   const userSettings = existsSync(settingsPath) ? JSON.parse(readFileSync(settingsPath, 'utf8')) : {};
+  // 产品是"耳机里":默认电脑不出声,播报由手机念(iOS SpeechOutput / Android EarpieceService)。
+  // 想让电脑也念,settings.json 里设 speakOnComputer:true。
+  const speakLocal = userSettings.speakOnComputer === true;
   const defaults = {
     level: Number(userSettings.level) || 3,
+    silent: !speakLocal,   // 传给 runTask:任务播报不在电脑出声
     push: apnsConfig ? apnsPath : null,
     // 批准桥接:runTask 会把权限请求经 approval-mcp 转回本 daemon
     approval: {
@@ -251,9 +278,9 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   // 批准播报:Mac 出声 + 手机带「批准/拒绝」按钮的推送
   const announce = async ({ id, project, summary }) => {
     const text = `${summary}，批准吗？`;
-    speak({ project, text }).catch(() => {});
+    speak({ project, text }, { silent: !speakLocal }).catch(() => {});
     if (apnsConfig) {
-      sendPush(apnsConfig, buildPayload({ project, text, category: 'APPROVAL', extra: { approvalId: id } }))
+      sendPush(apnsCfg(), buildPayload({ project, text, category: 'APPROVAL', extra: { approvalId: id } }))
         .catch((e) => console.error('APNs:', e.message));
     }
   };
@@ -264,17 +291,23 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     ? readFileSync(machineIdPath, 'utf8').trim()
     : hostname().split('.')[0]).replace(/[^\w一-龥-]/g, '-');
 
-  // 公网 Relay(可选):~/.earpiece/relay.json = { "url": "https://your-relay.example.com", "token": "..." }
+  // 公网 Relay(可选):~/.earpiece/relay.json = { "urls": ["https://主中继","https://备中继"] }
+  // 兼容旧单 url 形态。双中继互为兜底:写=两边都发,读=按序试,取信=两边各挂一条长轮询。
+  // bearer 用账户密钥(多租户隔离):account.json 优先,旧设备回退 relay.json.token,全新装则生成。
   const relayPath = join(dir, 'relay.json');
   const relayConfig = existsSync(relayPath)
-    ? { ...JSON.parse(readFileSync(relayPath, 'utf8')), machine }
+    ? (() => {
+        const c = JSON.parse(readFileSync(relayPath, 'utf8'));
+        const urls = (c.urls ?? [c.url]).filter(Boolean);
+        return { ...c, urls, url: urls[0], token: resolveAccountKey(dir), machine };
+      })()
     : null;
   const logLine = makeRelayLogger(relayConfig); // 字幕回放
 
   // 系统提示(重名拒绝等):Mac 出声 + 推手机
   const notify = ({ project, text }) => {
-    speak({ project, text }).catch(() => {});
-    if (apnsConfig) sendPush(apnsConfig, buildPayload({ project, text })).catch(() => {});
+    speak({ project, text }, { silent: !speakLocal }).catch(() => {});
+    if (apnsConfig) sendPush(apnsCfg(), buildPayload({ project, text })).catch(() => {});
   };
 
   const daemon = createDaemon({
@@ -305,65 +338,85 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     registry = buildRegistry([...scanClaude(), ...scanCodex(), ...scanHermesSessions()], loadAliases(aliasesPath));
     daemon.setResolver((text) => resolveSpoken(text, registry));
     if (relayConfig) {
-      fetch(`${relayConfig.url}/registry?machine=${encodeURIComponent(machine)}`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${relayConfig.token}` },
-        body: JSON.stringify(registry.map(({ name, cwd, agent, base, lastActive, needsRename, aliased }) =>
-          ({ name, cwd, agent, base, lastActive, needsRename, aliased }))),
-      }).catch(() => {});
+      const body = JSON.stringify(registry.map(({ name, cwd, agent, base, lastActive, needsRename, aliased }) =>
+        ({ name, cwd, agent, base, lastActive, needsRename, aliased })));
+      for (const u of relayConfig.urls) {
+        fetch(`${u}/registry?machine=${encodeURIComponent(machine)}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', authorization: `Bearer ${relayConfig.token}` },
+          body,
+        }).catch(() => {});
+      }
     }
   }
   // 历史回填:项目在 relay 上没字幕时,从电脑会话档案抽最近 10 条补上
+  // 读:按序试到第一个成功;写:两边都发(兜底语义)
+  const auth = () => ({ authorization: `Bearer ${relayConfig.token}` });
+  // 所有中继 fetch 必须带超时:某个中继连上但不回应(挂住)会让整个串行回填循环
+  // 永远卡死、后面项目(如「耳机」)永远轮不到 —— 这是手机停更的真凶。
+  const RELAY_TIMEOUT = 10_000;
+  const sig = () => AbortSignal.timeout(RELAY_TIMEOUT);
   const relayApi = relayConfig && {
-    get: (path) => fetch(`${relayConfig.url}${path}`, {
-      headers: { authorization: `Bearer ${relayConfig.token}` },
-    }).then((r) => r.json()),
-    log: (line) => fetch(`${relayConfig.url}/log`, {
+    get: async (path) => {
+      for (const u of relayConfig.urls) {
+        try {
+          const r = await fetch(`${u}${path}`, { headers: auth(), signal: sig() });
+          if (r.ok) return await r.json();
+        } catch { /* 超时/失败 → 下一个 */ }
+      }
+      throw new Error('all relays down');
+    },
+    log: (line) => Promise.all(relayConfig.urls.map((u) => fetch(`${u}/log`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${relayConfig.token}` },
+      headers: { 'content-type': 'application/json', ...auth() },
       body: JSON.stringify(line),
-    }).catch(() => {}),
-    del: (path) => fetch(`${relayConfig.url}${path}`, {
-      method: 'DELETE',
-      headers: { authorization: `Bearer ${relayConfig.token}` },
-    }).catch(() => {}),
+      signal: sig(),
+    }).catch(() => {}))),
+    del: (path) => Promise.all(relayConfig.urls.map((u) => fetch(`${u}${path}`, {
+      method: 'DELETE', headers: auth(), signal: sig(),
+    }).catch(() => {}))),
+    post: (path, body) => Promise.all(relayConfig.urls.map((u) => fetch(`${u}${path}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...auth() },
+      body: JSON.stringify(body),
+      signal: sig(),
+    }).catch(() => {}))),
   };
-  // 历史 = 会话档案最近 10 条人话。档案 mtime 变了(=又聊了)就重抽替换,所以会跟着实时刷新。
-  const seededMtime = new Map(); // 项目名 → 上次回填用的档案 mtime
+  // 历史 = 会话档案最近 50 条人话。配额优化:单请求批量回填(/history/seed,服务端
+  // 保留现场行)。档案变了就刷(mtime 检测),不再额外节流 —— 配额凶手是"一次回填发 52
+  // 个请求",已用批量端点(1 请求)根治;原来的 5 分钟节流是多余的,还把活跃项目卡住停更。
+  const seededMtime = new Map();  // 项目名 → 上次回填的签名(mtime/会话 sig);相等才跳过
   async function pushHistory(name, tail) {
     if (!tail.length) return;
-    // 现场行(手机指令/实时播报,不带 src:'seed')必须保留 —— 档案一变就整段重建的话,
-    // 会把用户刚发的消息和回复一起冲掉("发了但看不到"就是这么来的)。只换回填部分。
-    const existing = await relayApi.get(`/history?project=${encodeURIComponent(name)}`).catch(() => []);
-    const live = (Array.isArray(existing) ? existing : []).filter((l) => l.src !== 'seed');
-    const baseTs = Date.now() - tail.length * 1000;
-    await relayApi.del(`/history?project=${encodeURIComponent(name)}`);
-    await relayApi.log({ project: name, role: 'event', text: '↻ 电脑上的最近记录', ts: baseTs - 1000, src: 'seed' });
-    for (let i = 0; i < tail.length; i++) {
-      await relayApi.log({ project: name, ...tail[i], ts: baseTs + i * 1000, src: 'seed' });
-    }
-    for (const l of live) await relayApi.log({ project: name, ...l }); // 原 ts 重放
+    const baseTs = Date.now() - (tail.length + 1) * 1000;
+    const lines = [
+      { role: 'event', text: t('recentFromComputer'), ts: baseTs },
+      ...tail.map((l, i) => ({ ...l, ts: baseTs + (i + 1) * 1000 })),
+    ];
+    await relayApi.post('/history/seed', { project: name, lines });
   }
   async function refreshHistories() {
     if (!relayApi) return;
     for (const e of registry) {
-      // hermes 会话:没有磁盘档案,导出会话拿消息。签名(message_count:ended_at)变了才重推。
-      if (e.agent === 'hermes' && e.sessionId) {
-        const obj = exportHermesSession(e.sessionId);
-        if (!obj) continue;
-        const { sig, lines } = parseHermesHistory(obj, 50);
-        if (seededMtime.get(e.name) === sig) continue;
-        seededMtime.set(e.name, sig);
-        await pushHistory(e.name, lines);
-        continue;
-      }
-      if (!e.file) continue;
-      let mtime = 0;
-      try { mtime = statSync(e.file).mtimeMs; } catch { continue; }
-      if (seededMtime.get(e.name) === mtime) continue; // 没变化,跳过
-      const tail = extractTail(e.file, 50);
-      seededMtime.set(e.name, mtime);
-      await pushHistory(e.name, tail);
+      try { // 单个项目失败/超时不连累后面的项目(否则前面卡住,「耳机」永远轮不到)
+        // hermes 会话:没有磁盘档案,导出会话拿消息。签名(message_count:ended_at)变了才重推。
+        if (e.agent === 'hermes' && e.sessionId) {
+          const obj = exportHermesSession(e.sessionId);
+          if (!obj) continue;
+          const { sig: hsig, lines } = parseHermesHistory(obj, 50);
+          if (seededMtime.get(e.name) === hsig) continue;
+          seededMtime.set(e.name, hsig);
+          await pushHistory(e.name, lines);
+          continue;
+        }
+        if (!e.file) continue;
+        let mtime = 0;
+        try { mtime = statSync(e.file).mtimeMs; } catch { continue; }
+        if (seededMtime.get(e.name) === mtime) continue; // 没变化,跳过
+        const tail = extractTail(e.file, 50);
+        seededMtime.set(e.name, mtime);
+        await pushHistory(e.name, tail);
+      } catch { /* 这个项目这轮跳过,下轮再试 */ }
     }
   }
 
@@ -381,9 +434,9 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
         }
       }
       await refreshRegistry();
-      notify({ project: '小易', text: `好,以后叫「${alias}」` });
+      notify({ project: t('assistantName'), text: t('renamed', { alias }) });
     } catch (e) {
-      notify({ project: '小易', text: e.message });
+      notify({ project: t('assistantName'), text: e.message });
     }
   };
   daemon.onSettings = async ({ level }) => {
@@ -392,23 +445,47 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
       defaults.level = lv; // runner 每次任务展开 defaults,即时生效
       userSettings.level = lv;
       writeFileSync(settingsPath, JSON.stringify(userSettings, null, 2));
-      notify({ project: '小易', text: `好,播报改成 ${lv} 级` });
+      notify({ project: t('assistantName'), text: t('levelChanged', { level: lv }) });
     }
+  };
+  // 强制同步:手机在某项目里点刷新 → 重扫该项目(压缩/续会话也跟上)→ 立刻重推最新尾巴。
+  // 绕过 seededMtime 缓存,无条件推一次。
+  daemon.onResync = async ({ project }) => {
+    if (!relayApi || !project) return;
+    await refreshRegistry();
+    const e = registry.find((r) => r.name === project);
+    if (!e) return;
+    let lines = [];
+    if (e.agent === 'hermes' && e.sessionId) {
+      const obj = exportHermesSession(e.sessionId);
+      lines = obj ? parseHermesHistory(obj, 50).lines : [];
+    } else if (e.file) {
+      lines = extractTail(e.file, 50);
+      try { seededMtime.set(e.name, statSync(e.file).mtimeMs); } catch { /* 档案没了就算 */ }
+    }
+    await pushHistory(e.name, lines);
   };
 
   // 实时状态上报(App 内横幅/状态行用),10 秒一拍。带本机局域网 IP,供手机直连发现。
   if (relayApi) {
     setInterval(() => {
-      fetch(`${relayConfig.url}/state?machine=${encodeURIComponent(machine)}`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${relayConfig.token}` },
-        body: JSON.stringify({ ...daemon.state(), lanIPs: lanIPs() }),
-      }).catch(() => {});
-    }, 10_000);
+      const stateBody = JSON.stringify({ ...daemon.state(), lanIPs: lanIPs() });
+      for (const u of relayConfig.urls) {
+        fetch(`${u}/state?machine=${encodeURIComponent(machine)}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', authorization: `Bearer ${relayConfig.token}` },
+          body: stateBody,
+        }).catch(() => {});
+      }
+    }, 20_000); // 状态上报 20s 一拍(配额优化,原 10s)
+    // 周期取手机上报的 APNs token(重装/换机后自动跟上,推送不再发去死 token)
+    const pullToken = () => relayApi.get('/apns-token').then((r) => { if (r?.token) liveApnsToken = r.token; }).catch(() => {});
+    pullToken();
+    setInterval(pullToken, 30_000);
   }
 
   refreshRegistry().then(refreshHistories);
-  setInterval(() => refreshRegistry().then(refreshHistories), 30_000);
+  setInterval(() => refreshRegistry().then(refreshHistories), 60_000); // 配额优化,原 30s
   const server = http.createServer((req, res) => {
     let body = '';
     req.on('data', (d) => { body += d; });
@@ -418,17 +495,21 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     console.log(`▶ Earpiece daemon 监听 0.0.0.0:7780,已注册项目: ${Object.keys(projects).join(', ') || '(无)'}`);
   });
 
-  if (relayConfig) pullLoop(relayConfig, daemon);
+  if (relayConfig) for (const u of relayConfig.urls) pullLoop({ ...relayConfig, url: u }, daemon);
 }
 
 // 字幕回放:往 relay 报一行(发不出去就算了,绝不影响主流程)
 export function makeRelayLogger(relay) {
   if (!relay) return () => {};
+  const urls = relay.urls ?? [relay.url];
   return (line) => {
-    fetch(`${relay.url}/log`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${relay.token}` },
-      body: JSON.stringify({ ...line, ts: Date.now() }),
-    }).catch(() => {});
+    const body = JSON.stringify({ ...line, ts: Date.now() });
+    for (const u of urls) {
+      fetch(`${u}/log`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${relay.token}` },
+        body,
+      }).catch(() => {});
+    }
   };
 }

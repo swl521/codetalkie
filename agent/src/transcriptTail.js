@@ -62,7 +62,7 @@ export function extractTail(file, limit = 10) {
 
     const text = textOfContent(content);
     if (looksLikeNoise(text)) continue;
-    out.push({ role, text: text.length > 200 ? text.slice(0, 199) + '…' : text });
+    out.push({ role, text: text.length > 2000 ? text.slice(0, 1999) + '…' : text });
   }
   return out.slice(-limit);
 }

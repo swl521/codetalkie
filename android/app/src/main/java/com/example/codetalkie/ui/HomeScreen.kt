@@ -33,11 +33,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.codetalkie.R
 import com.example.codetalkie.data.ProjectEntry
 import com.example.codetalkie.data.RelayClient
 import com.example.codetalkie.data.SettingsRepository
@@ -82,7 +84,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
             _state.value = _state.value.copy(loading = true, error = null)
             try {
                 val s = settingsRepo.current()
-                val client = RelayClient(s.relayUrl, s.token)
+                val client = RelayClient(s.relayUrl, s.bearer)
                 coroutineScope {
                     val registry = async { client.fetchRegistry() }
                     val lasts = async { runCatching { client.fetchProjects() }.getOrDefault(emptyList()) }
@@ -97,7 +99,10 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.value = _state.value.copy(loading = false, error = e.message ?: "网络错误")
+                _state.value = _state.value.copy(
+                    loading = false,
+                    error = e.message ?: getApplication<Application>().getString(R.string.error_network),
+                )
             }
         }
     }
@@ -131,11 +136,18 @@ fun HomeScreen(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("小易", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text(
+                stringResource(R.string.app_name),
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+            )
             Spacer(Modifier.width(12.dp))
             Text(
-                text = if (state.onlineMachines.isEmpty()) "无在线机器"
-                else "在线: ${state.onlineMachines.joinToString("、")}",
+                text = if (state.onlineMachines.isEmpty()) stringResource(R.string.home_no_online_machines)
+                else stringResource(
+                    R.string.home_online_machines,
+                    state.onlineMachines.joinToString(stringResource(R.string.list_separator)),
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -220,7 +232,8 @@ private fun EngineGroupHeader(
         Spacer(Modifier.weight(1f))
         Icon(
             imageVector = if (collapsed) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowUp,
-            contentDescription = if (collapsed) "展开" else "折叠",
+            contentDescription = if (collapsed) stringResource(R.string.action_expand)
+            else stringResource(R.string.action_collapse),
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
@@ -268,7 +281,8 @@ private fun ProjectRow(
         IconButton(onClick = onToggleSubscribe) {
             Icon(
                 imageVector = Icons.Filled.Notifications,
-                contentDescription = if (subscribed) "取消播报订阅" else "订阅播报",
+                contentDescription = if (subscribed) stringResource(R.string.action_unsubscribe)
+                else stringResource(R.string.action_subscribe),
                 tint = if (subscribed) MaterialTheme.colorScheme.primary
                 else MaterialTheme.colorScheme.outline,
             )

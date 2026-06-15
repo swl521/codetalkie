@@ -19,7 +19,7 @@ const CONFIG = {
   P8_PATH:      './AuthKey_XXXXXXXXXX.p8',   // 你的 .p8 文件路径
   KEY_ID:       'XXXXXXXXXX',                // .p8 的 Key ID(10 位)
   TEAM_ID:      'XXXXXXXXXX',                // Apple Developer Team ID(10 位)
-  BUNDLE_ID:    'com.example.codetalkie',  // 必须和 Xcode 里的 Bundle Identifier 完全一致
+  BUNDLE_ID:    'com.swl521.earpiecespike',  // 必须和 Xcode 里的 Bundle Identifier 完全一致
   DEVICE_TOKEN: 'PASTE_FROM_APP',            // 从 App 屏幕上复制的那串 token
 
   // Xcode 直接装到真机的是 development build → 用 sandbox 服务器。

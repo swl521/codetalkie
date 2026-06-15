@@ -1,24 +1,15 @@
 import { EVENT } from './events.js';
+import { t, toolWord, guiWord } from './i18n.js';
 
-const TOOL_LABELS = {
-  Bash: '跑命令', Edit: '改文件', Write: '写文件', Read: '读文件',
-  Grep: '搜代码', Glob: '找文件', WebSearch: '查网页', WebFetch: '查网页',
-  Task: '派子任务', TodoWrite: '记待办',
-};
-
-// computer use 等 MCP 工具:mcp__<服务>__<动作>。动作词典,缺了念服务名。
-const GUI_LABELS = {
-  screenshot: '截屏', left_click: '点击', double_click: '双击', right_click: '右键点击',
-  triple_click: '三连击', type: '打字', key: '按键', scroll: '滚动',
-  open_application: '开应用', left_click_drag: '拖拽', wait: '等待',
-  read_clipboard: '读剪贴板', write_clipboard: '写剪贴板', zoom: '放大看',
-};
+// 所有人话词典都在 agent/lang/<语言>.json —— 放新语言文件进去即可换语言(见 docs/I18N.md)。
 
 function toolLabel(name) {
-  if (TOOL_LABELS[name]) return TOOL_LABELS[name];
+  const word = toolWord(name);
+  if (word) return word;
+  // computer use 等 MCP 工具:mcp__<服务>__<动作>。动作词典缺了念服务名。
   const mcp = /^mcp__(.+?)__(.+)$/.exec(name ?? '');
-  if (mcp) return GUI_LABELS[mcp[2]] ?? `用 ${mcp[1]}`;
-  return name ? `用 ${name}` : null;
+  if (mcp) return guiWord(mcp[2]) ?? t('useTool', { name: mcp[1] });
+  return name ? t('useTool', { name }) : null;
 }
 
 export function clip(text, max = 80) {
@@ -26,17 +17,17 @@ export function clip(text, max = 80) {
 }
 
 function shortPath(p) {
-  return p ? p.split('/').slice(-2).join('/') : '某个文件';
+  return p ? p.split('/').slice(-2).join('/') : t('someFile');
 }
 
 // 权限请求 → 一句人话(批准播报用):「要跑命令「npm test」,批准吗?」
 export function summarizeToolRequest(tool, input = {}) {
-  if (tool === 'Bash') return `要跑命令「${clip(input.command ?? '', 40)}」`;
-  if (tool === 'Edit' || tool === 'Write' || tool === 'NotebookEdit') return `要改文件 ${shortPath(input.file_path)}`;
-  if (tool === 'Read') return `要读文件 ${shortPath(input.file_path)}`;
-  if (tool === 'WebFetch' || tool === 'WebSearch') return '要上网查东西';
+  if (tool === 'Bash') return t('askBash', { cmd: clip(input.command ?? '', 40) });
+  if (tool === 'Edit' || tool === 'Write' || tool === 'NotebookEdit') return t('askEditFile', { path: shortPath(input.file_path) });
+  if (tool === 'Read') return t('askReadFile', { path: shortPath(input.file_path) });
+  if (tool === 'WebFetch' || tool === 'WebSearch') return t('askWeb');
   const label = toolLabel(tool);
-  return label ? `要${label}` : `要用 ${tool ?? '某个工具'}`;
+  return label ? t('askLabeled', { label }) : t('askUnknown', { tool: tool ?? t('someTool') });
 }
 
 // 归一事件 → 不带项目名前缀的裸播报句
@@ -44,20 +35,20 @@ export function toSpeech(event) {
   switch (event.type) {
     case EVENT.SESSION_STARTED: return ''; // 不播"开始干活了";开工提示改由 daemon 收到指令时回显任务
     case EVENT.PROGRESS_TEXT: return clip(event.text);
-    case EVENT.TOOL_STARTED: return `正在${toolLabel(event.tool) ?? '干一步'}`;
+    case EVENT.TOOL_STARTED: return t('toolStarted', { label: toolLabel(event.tool) ?? t('stepGeneric') });
     case EVENT.TOOL_FINISHED: {
       const label = toolLabel(event.tool);
-      if (!label) return event.ok ? '一步完成' : '有一步失败了';
-      return event.ok ? `${label}完成` : `${label}失败了`;
+      if (!label) return event.ok ? t('stepDone') : t('stepFailed');
+      return event.ok ? t('toolDone', { label }) : t('toolFailed', { label });
     }
-    case EVENT.APPROVAL_NEEDED: return `${event.summary ?? '有个操作'}，等你批准`;
-    case EVENT.TASK_FINISHED: return event.text ? `任务完成。${clip(event.text)}` : '任务完成';
-    case EVENT.TASK_FAILED: return `任务出错了：${event.text ?? '未知原因'}`;
-    case EVENT.TASK_STUCK: return `好像卡住了，${Math.round((event.silentMs ?? 0) / 1000)} 秒没动静`;
+    case EVENT.APPROVAL_NEEDED: return t('approvalNeeded', { summary: event.summary ?? t('someOperation') });
+    case EVENT.TASK_FINISHED: return event.text ? t('taskDoneWith', { text: clip(event.text) }) : t('taskDone');
+    case EVENT.TASK_FAILED: return t('taskFailed', { reason: event.text ?? t('unknownReason') });
+    case EVENT.TASK_STUCK: return t('stuck', { sec: Math.round((event.silentMs ?? 0) / 1000) });
     case EVENT.HEARTBEAT: {
       const mins = Math.max(1, Math.round((event.sinceMs ?? 0) / 60000));
       const doing = toolLabel(event.lastTool);
-      return doing ? `还在${doing}，已经 ${mins} 分钟了` : `还在跑，已经 ${mins} 分钟了`;
+      return doing ? t('heartbeatDoing', { label: doing, min: mins }) : t('heartbeatGeneric', { min: mins });
     }
     default: return '';
   }

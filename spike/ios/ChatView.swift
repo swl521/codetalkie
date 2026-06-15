@@ -1,6 +1,6 @@
 import SwiftUI
 
-// 字幕回放:一个项目的时间线(你的指令/小易播报/批准事件)+ 底部继续发指令。
+// 字幕回放:一个项目的时间线(你的指令/答鸭播报/批准事件)+ 底部继续发指令。
 // 完整对话在电脑上(claude --resume),这里是"通话记录",不是聊天软件。
 
 struct ChatLine: Identifiable, Equatable {
@@ -8,6 +8,7 @@ struct ChatLine: Identifiable, Equatable {
     let role: String // user | assistant | event
     let text: String
     let ts: Double
+    var src: String? = nil // "seed"=电脑回填(不念);nil/其他=实时播报
 }
 
 struct ChatView: View {
@@ -18,7 +19,6 @@ struct ChatView: View {
     @State private var sendResult = ""
     @StateObject private var speech = SpeechInput()
     @EnvironmentObject private var bus: RefreshBus  // Tab 栏刷新按钮
-    private let pollTimer = Timer.publish(every: 4, on: .main, in: .common).autoconnect()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -43,7 +43,7 @@ struct ChatView: View {
             ToolbarItem(placement: .principal) {
                 VStack(spacing: 1) {
                     Text(project).font(.headline)
-                    Text("🎙 \"嘿 Siri,告诉小易\" → \"\(project) + 要做的事\"")
+                    Text("🎙 \"嘿 Siri,告诉答鸭\" → \"\(project) + 要做的事\"")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -51,18 +51,26 @@ struct ChatView: View {
                 }
             }
         }
-        .task { await refresh() }
-        .onReceive(pollTimer) { _ in Task { await refresh() } }
+        // 绑定视图生命周期的轮询循环:每 2 秒拉一次,停在页面里也实时更新(不用退出重进)。
+        // 旧的 Timer.publish 会因视图重建被反复重置、计时到不了,所以之前不自动刷新。
+        .task {
+            while !Task.isCancelled {
+                await refresh()
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+            }
+        }
         .onAppear { bus.activeChat = project }
         .onDisappear { if bus.activeChat == project { bus.activeChat = nil } }
         .onChange(of: bus.tick) { _ in
             guard bus.activeChat == project else { return }  // 只有自己在前台才响应
-            Task { bus.spinning = true; await refresh(); bus.spinning = false }
+            Task { bus.spinning = true; await forceSync(); bus.spinning = false }  // 手动刷新=强制同步
         }
         .onChange(of: speech.recording) { rec in
             if !rec {
                 let said = speech.transcript.trimmingCharacters(in: .whitespaces)
-                if !said.isEmpty { draft = said; send() }
+                // App 里语音:只把文字填进输入框,等你点发送确认(不自动发)。
+                // 眼睛不在屏幕的 Siri / 耳机模式走 SendCommandIntent,那条本就直接发。
+                if !said.isEmpty { draft = said }
             }
         }
     }
@@ -129,6 +137,22 @@ struct ChatView: View {
         }
     }
 
+    // 强制同步:先发 /resync 戳电脑重扫重推这个项目,稍等一下再拉——治「连中继都落后」。
+    private func forceSync() async {
+        let base = EarpieceConfig.endpoint.replacingOccurrences(of: "/command", with: "")
+        if let url = URL(string: "\(base)/resync") {
+            var req = URLRequest(url: url)
+            req.httpMethod = "POST"
+            req.timeoutInterval = 6
+            req.setValue("Bearer \(EarpieceConfig.token)", forHTTPHeaderField: "Authorization")
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = try? JSONSerialization.data(withJSONObject: ["project": project])
+            _ = try? await URLSession.shared.data(for: req)
+        }
+        try? await Task.sleep(nanoseconds: 700_000_000)  // 给电脑重扫+重推一点时间
+        await refresh()
+    }
+
     private func refresh() async {
         let base = EarpieceConfig.endpoint.replacingOccurrences(of: "/command", with: "")
         guard let url = URL(string: "\(base)/history?project=\(project.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? project)") else { return }
@@ -138,9 +162,16 @@ struct ChatView: View {
         guard let (data, resp) = try? await URLSession.shared.data(for: req),
               (resp as? HTTPURLResponse)?.statusCode == 200,
               let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return }
-        lines = arr.enumerated().map { i, o in
-            ChatLine(id: i, role: o["role"] as? String ?? "assistant",
-                     text: o["text"] as? String ?? "", ts: o["ts"] as? Double ?? 0)
+        // relay 按"插入顺序"返回(seed 段在前、live 行在后),不是时间序。
+        // 必须按 ts 排,否则最新的回填内容会被压在旧 live 行上面,看着像"卡住没更新"。
+        let sorted = arr.map { o in
+            ChatLine(id: 0, role: o["role"] as? String ?? "assistant",
+                     text: o["text"] as? String ?? "", ts: o["ts"] as? Double ?? 0,
+                     src: o["src"] as? String)
         }
+        .sorted { $0.ts < $1.ts }
+        .enumerated().map { i, l in ChatLine(id: i, role: l.role, text: l.text, ts: l.ts, src: l.src) }
+        lines = sorted
+        // 播报由 BroadcastService 统一轮询订阅项目来念(前台+后台),这里不再单独念。
     }
 }

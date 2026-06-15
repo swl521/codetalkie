@@ -32,6 +32,23 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         let token = deviceToken.map { String(format: "%02x", $0) }.joined()
         print("DEVICE TOKEN: \(token)")
         Self.publish(token)
+        Self.registerToken()   // 上报中继(已配对才会成功;配对成功后会再报一次)
+    }
+
+    // 把 APNs token 上报到中继,daemon 取来发推送(重装/换机后自动跟上,通知不再发去死 token)。
+    // 未配对(无账户密钥)或 token 还没拿到时跳过;配对成功后由 ContentView 再调一次。
+    static func registerToken() {
+        let tok = deviceTokenString
+        guard tok.count >= 32, tok.allSatisfy({ $0.isHexDigit }),
+              !EarpieceConfig.token.isEmpty,
+              let url = URL(string: EarpieceConfig.endpoint.replacingOccurrences(of: "/command", with: "/apns-token")) else { return }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.timeoutInterval = 8
+        req.setValue("Bearer \(EarpieceConfig.token)", forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["token": tok])
+        URLSession.shared.dataTask(with: req).resume()
     }
 
     func application(_ application: UIApplication,

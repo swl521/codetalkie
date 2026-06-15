@@ -1,0 +1,58 @@
+{
+  "meta": {
+    "name": "简体中文",
+    "speechLocale": "zh-CN",
+    "edgeVoice": "zh-CN-XiaoxiaoNeural"
+  },
+  "tools": {
+    "Bash": "跑命令", "Edit": "改文件", "Write": "写文件", "Read": "读文件",
+    "Grep": "搜代码", "Glob": "找文件", "WebSearch": "查网页", "WebFetch": "查网页",
+    "Task": "派子任务", "TodoWrite": "记待办"
+  },
+  "gui": {
+    "screenshot": "截屏", "left_click": "点击", "double_click": "双击", "right_click": "右键点击",
+    "triple_click": "三连击", "type": "打字", "key": "按键", "scroll": "滚动",
+    "open_application": "开应用", "left_click_drag": "拖拽", "wait": "等待",
+    "read_clipboard": "读剪贴板", "write_clipboard": "写剪贴板", "zoom": "放大看"
+  },
+  "phrases": {
+    "useTool": "用 {name}",
+    "someFile": "某个文件",
+    "someTool": "某个工具",
+    "askBash": "要跑命令「{cmd}」",
+    "askEditFile": "要改文件 {path}",
+    "askReadFile": "要读文件 {path}",
+    "askWeb": "要上网查东西",
+    "askLabeled": "要{label}",
+    "askUnknown": "要用 {tool}",
+    "toolStarted": "正在{label}",
+    "stepGeneric": "干一步",
+    "stepDone": "一步完成",
+    "stepFailed": "有一步失败了",
+    "toolDone": "{label}完成",
+    "toolFailed": "{label}失败了",
+    "someOperation": "有个操作",
+    "approvalNeeded": "{summary}，等你批准",
+    "taskDone": "任务完成",
+    "taskDoneWith": "任务完成。{text}",
+    "unknownReason": "未知原因",
+    "taskFailed": "任务出错了：{reason}",
+    "stuck": "好像卡住了，{sec} 秒没动静",
+    "heartbeatDoing": "还在{label}，已经 {min} 分钟了",
+    "heartbeatGeneric": "还在跑，已经 {min} 分钟了",
+    "assistantName": "答鸭",
+    "received": "收到,{prompt}",
+    "dupName": "有两个项目都叫「{name}」,先在手机上改个名再叫我",
+    "approved": "✅ 已批准",
+    "denied": "⛔ {reason}",
+    "userDenied": "用户拒绝了",
+    "approvalTimeout": "等太久没人批,先拒绝了",
+    "waitingApproval": "🔔 {summary},等待批准",
+    "recentFromComputer": "↻ 电脑上的最近记录",
+    "renamed": "好,以后叫「{alias}」",
+    "levelChanged": "好,播报改成 {level} 级",
+    "handedToWindow": "⇄ 已交给终端窗口「{name}」(同一个对话)",
+    "windowBusy": "终端窗口还在忙,它干完结果会进字幕",
+    "windowEmptyReply": "终端干完了,但没说结果"
+  }
+}

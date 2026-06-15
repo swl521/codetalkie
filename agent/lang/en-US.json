@@ -1,0 +1,58 @@
+{
+  "meta": {
+    "name": "English",
+    "speechLocale": "en-US",
+    "edgeVoice": "en-US-AriaNeural"
+  },
+  "tools": {
+    "Bash": "running a command", "Edit": "editing a file", "Write": "writing a file", "Read": "reading a file",
+    "Grep": "searching code", "Glob": "finding files", "WebSearch": "searching the web", "WebFetch": "fetching a page",
+    "Task": "delegating a subtask", "TodoWrite": "updating the todo list"
+  },
+  "gui": {
+    "screenshot": "taking a screenshot", "left_click": "clicking", "double_click": "double-clicking", "right_click": "right-clicking",
+    "triple_click": "triple-clicking", "type": "typing", "key": "pressing keys", "scroll": "scrolling",
+    "open_application": "opening an app", "left_click_drag": "dragging", "wait": "waiting",
+    "read_clipboard": "reading the clipboard", "write_clipboard": "writing the clipboard", "zoom": "zooming in"
+  },
+  "phrases": {
+    "useTool": "using {name}",
+    "someFile": "a file",
+    "someTool": "a tool",
+    "askBash": "wants to run \"{cmd}\"",
+    "askEditFile": "wants to edit {path}",
+    "askReadFile": "wants to read {path}",
+    "askWeb": "wants to look something up online",
+    "askLabeled": "wants to start {label}",
+    "askUnknown": "wants to use {tool}",
+    "toolStarted": "now {label}",
+    "stepGeneric": "working on a step",
+    "stepDone": "step done",
+    "stepFailed": "a step failed",
+    "toolDone": "done {label}",
+    "toolFailed": "failed while {label}",
+    "someOperation": "an action",
+    "approvalNeeded": "{summary} — waiting for your approval",
+    "taskDone": "Task complete",
+    "taskDoneWith": "Task complete. {text}",
+    "unknownReason": "unknown reason",
+    "taskFailed": "Task failed: {reason}",
+    "stuck": "Looks stuck — quiet for {sec} seconds",
+    "heartbeatDoing": "still {label}, {min} minutes in",
+    "heartbeatGeneric": "still working, {min} minutes in",
+    "assistantName": "Ducky",
+    "received": "Got it: {prompt}",
+    "dupName": "Two projects are both named \"{name}\" — rename one on your phone first",
+    "approved": "✅ Approved",
+    "denied": "⛔ {reason}",
+    "userDenied": "You declined",
+    "approvalTimeout": "No answer for too long, declined for safety",
+    "waitingApproval": "🔔 {summary} — awaiting approval",
+    "recentFromComputer": "↻ Recent activity from the computer",
+    "renamed": "OK, it's \"{alias}\" from now on",
+    "levelChanged": "OK, verbosity set to level {level}",
+    "handedToWindow": "⇄ Handed to terminal window \"{name}\" (same conversation)",
+    "windowBusy": "The terminal window is still busy — results will show up in the captions",
+    "windowEmptyReply": "The terminal finished but returned nothing"
+  }
+}

@@ -1,4 +1,4 @@
-// 生成小易 App 图标:蓝绿渐变底 + 白色耳机符号。用法: swift icon-gen.swift <输出.png>
+// 生成答鸭 App 图标:蓝绿渐变底 + 白色耳机符号。用法: swift icon-gen.swift <输出.png>
 import AppKit
 
 let out = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : "icon-1024.png"

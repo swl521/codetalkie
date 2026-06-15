@@ -6,17 +6,18 @@
 >
 > Like a dispatcher on a trucker's radio: your coding agent reports progress into your earbuds while you're away from the screen.
 
-## 📲 试用 Beta / Try it
+## 下载安装(桌面端)
 
-**iPhone — TestFlight 公开测试(任意 Apple ID 可装):**
+成品桌面应用见 [Releases](../../releases) —— 内嵌 Node + agent,客户机零依赖:
 
-👉 **https://testflight.apple.com/join/JebJJr4P**
+| 平台 | 文件 | 安装 |
+|------|------|------|
+| **Mac**(Apple Silicon) | `答鸭-Ducky.dmg` | 双击 → 拖进「应用程序」→ **右键 App → 打开**(过 Gatekeeper,因暂未公证)|
+| **Windows**(x64) | `Ducky-Windows-x64.zip` | 解压 → 运行 `install.bat`(装到 `%LOCALAPPDATA%\Ducky`、建开机自启)|
 
-用 iPhone 的 Safari 打开链接 → 安装 TestFlight → 安装「答鸭 / Ducky」。再按下方[快速开始](#快速开始局域网模式)在电脑上跑起接收端、配对手机即可。
+装好后:菜单栏/托盘出现 🦆 → 点「配对码 / 二维码」→ 手机「答鸭」App 扫码或输 6 位码绑定 → 之后这台电脑的进展就播进你耳机。绑多台手机:点「绑定新手机(出一个新码)」让每台各扫一次。
 
-> iPhone — open the link in Safari, install TestFlight, then install Ducky. Pair it with your computer (see Quick Start) and you're live.
-
-Android / 桌面端(macOS · Windows)安装包陆续放出。
+> 当前为开发签名(Mac ad-hoc / Win 未签名),首次打开需手动放行;正式签名+公证后无此步。
 
 ## 它不是什么
 
@@ -42,7 +43,7 @@ Android / 桌面端(macOS · Windows)安装包陆续放出。
 | `agent/` | Desktop Agent(Node.js 零依赖):事件归一(三引擎)、状态机、5 级播报过滤、合并队列、APNs 推送、批准桥接、项目/会话扫描、历史回填、agent-hub 桥、daemon |
 | `spike/ios/` | iOS App(SwiftUI,手写 pbxproj 命令行可编译):引擎分组项目列表(可折叠)、字幕回放对话页、大语音按钮、Siri App Intents、批准横幅、M3 底栏 |
 | `android/` | Android App(Kotlin + Compose):同款主页/对话页/设置,前台服务轮询 + TTS 朗读;双语音引擎(微软 Edge 云端神经语音 / 系统 TTS),华为真机实测 |
-| `relay/`(公开版未含) | 公网中继(Cloudflare Worker + Durable Object)需自部署;接口形状见 agent/src/daemon.js 的 relayApi |
+| `relay/` | 公网中继(Cloudflare Worker + Durable Object,自部署):多机信箱、注册表、字幕历史 |
 | `menubar/` | macOS 菜单栏 App:daemon 状态、在终端继续会话 |
 | `scripts/` | 安装脚本(macOS LaunchAgent / Linux systemd / Windows ps1)、attach.mjs(终端接回手机会话)、phone-sync-hook.mjs(手机消息同步进窗口)、window-listener.mjs(桌面窗口接手机指令) |
 | `docs/` | 设计 spec、进度、Windows 部署(中文) |
@@ -76,6 +77,10 @@ cp spike/ios/EarpieceConfig.sample.swift spike/ios/EarpieceConfig.swift
 ```bash
 npm test   # node:test,零依赖
 ```
+
+## 隐私
+
+见 [docs/PRIVACY.md](docs/PRIVACY.md)(中英)。
 
 ## License
 

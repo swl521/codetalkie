@@ -51,14 +51,17 @@ export function scanClaude(root = join(homedir(), '.claude', 'projects')) {
       .map((f) => { try { return { f: join(dir, f), m: statSync(join(dir, f)).mtimeMs }; } catch { return null; } })
       .filter(Boolean)
       .sort((a, b) => b.m - a.m);
-    // cwd 可能藏得深(实测 18KB 处),读 64KB;最新的可能是纯摘要,最多试 8 个。
-    // 目录必须真实存在于本机 —— 同步来的外机项目(NAS/Windows/Linux)是空壳,跑不了,不收。
-    for (const { f, m } of sorted.slice(0, 8)) {
-      const cwd = decodeCwd(CWD_RE.exec(readHead(f, 65536))?.[1]);
-      if (!cwd || !existsSync(cwd) || isJunkCwd(cwd)) continue;
-      if (!out.has(cwd) || out.get(cwd).lastActive < m) out.set(cwd, { lastActive: m, file: f });
-      break;
+    // 同一目录下所有转写都是同一个项目(同 cwd)。所以:cwd 从"任意有它的文件"认(最新的
+    // 可能是压缩后的纯摘要、开头没 cwd,往下找),但历史永远读"最新那个文件"的尾巴——否则压缩/
+    // 续过的会话会卡读旧文件、停更。cwd 可能藏到 18KB 深,读 64KB;最多试 8 个。
+    let cwd = null;
+    for (const { f } of sorted.slice(0, 8)) {
+      const c = decodeCwd(CWD_RE.exec(readHead(f, 65536))?.[1]);
+      if (c) { cwd = c; break; }
     }
+    if (!cwd || !existsSync(cwd) || isJunkCwd(cwd)) continue;
+    const newest = sorted[0]; // 活跃会话:永远跟最新档案走
+    if (!out.has(cwd) || out.get(cwd).lastActive < newest.m) out.set(cwd, { lastActive: newest.m, file: newest.f });
   }
   return [...out].map(([cwd, v]) => ({ cwd, agent: 'claude', base: basename(cwd), lastActive: v.lastActive, file: v.file }));
 }

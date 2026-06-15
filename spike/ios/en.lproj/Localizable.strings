@@ -1,0 +1,135 @@
+/* 答鸭 / Ducky — English. Keys are the Chinese literals used in SwiftUI views. */
+
+/* Tabs */
+"主页" = "Home";
+"设置" = "Settings";
+"刷新" = "Sync";
+
+/* Binding a computer */
+"绑定电脑" = "Pair a computer";
+"在电脑上运行 答鸭,会显示一个 6 位配对码,输到这里绑定。" = "Run Ducky on your computer to get a 6-digit code, then enter it here.";
+"6 位配对码" = "6-digit code";
+"绑定" = "Pair";
+"绑定中…" = "Pairing…";
+"扫码绑定" = "Scan to pair";
+"完成" = "Done";
+"取消" = "Cancel";
+"已绑定" = "Paired";
+"解绑" = "Unpair";
+
+/* Broadcast */
+"播报" = "Broadcast";
+"播报级别" = "Broadcast level";
+"1 · 只报结果和批准" = "1 · Results & approvals only";
+"2 · 加开工" = "2 · + Start notices";
+"3 · 阶段汇报" = "3 · Stage updates";
+"4 · 每步都报" = "4 · Every step";
+"5 · 话痨" = "5 · Verbose";
+"「要批准」和「任务结束」任何级别都会播" = "“Needs approval” and “Task done” always play, at any level";
+"耳机模式(锁屏 / 后台也念)" = "Earphone mode (plays when locked / in background)";
+"开了揣兜里、锁屏也能把新播报念进耳机(更费电)。关了只在 App 打开时念。" = "On: new updates play into your earphones even when locked (uses more battery). Off: only while the app is open.";
+
+/* Voice / language */
+"语音识别语言" = "Speech-to-text language";
+"说话转文字用这个语言;电脑播报语言在电脑端 ~/.earpiece/settings.json 配 lang" = "Language for speech-to-text. Computer broadcast language is set on the computer in ~/.earpiece/settings.json (lang).";
+"如 zh-CN / en-US,留空=系统语言" = "e.g. zh-CN / en-US, empty = system language";
+
+/* Membership / Pro */
+"会员" = "Membership";
+"答鸭 Pro" = "Ducky Pro";
+"升级 Pro" = "Upgrade to Pro";
+"升级" = "Upgrade";
+"随时随地远程" = "Remote, anywhere";
+"Pro 已订阅 · 随时随地远程" = "Pro active · Remote anywhere";
+"可随时取消" = "Cancel anytime";
+"恢复购买" = "Restore purchases";
+"使用条款(EULA)" = "Terms of Use (EULA)";
+"隐私政策" = "Privacy Policy";
+"云端高级语音" = "Cloud premium voice";
+"更自然的播报嗓音" = "More natural broadcast voice";
+"优先送达" = "Priority delivery";
+"消息更快、更稳" = "Faster, more reliable delivery";
+"公网中继" = "Internet relay";
+"公网中继(任何网络)" = "Internet relay (any network)";
+"公网中继 🔒 Pro" = "Internet relay 🔒 Pro";
+"多台电脑" = "Multiple computers";
+"一个手机管所有电脑,随便切" = "Manage all your computers from one phone";
+"出门、用流量也能连电脑——不必和电脑同一 WiFi" = "Reach your computer on cellular — no need to share its WiFi";
+"免费版始终可用:和电脑在同一 WiFi 时,局域网直连。" = "Free forever: direct LAN connection when on the same WiFi as your computer.";
+"免费版:和电脑同一 WiFi 时局域网直连。Pro:公网中继,出门用流量也能连。" = "Free: direct LAN on the same WiFi. Pro: internet relay so you can connect on cellular.";
+"订阅暂不可用,稍后再试" = "Subscription unavailable, try again later";
+"订阅自动续订,可在 系统设置 → Apple ID → 订阅 里随时取消;付款在确认时记入你的 Apple 账户。" = "Subscription auto-renews. Cancel anytime in Settings → Apple ID → Subscriptions. Payment is charged to your Apple account at confirmation.";
+
+/* Connection */
+"连接方式" = "Connection";
+"连接中…" = "Connecting…";
+"连到电脑" = "Connect to computer";
+"局域网(同 WiFi)" = "LAN (same WiFi)";
+"当前地址" = "Current address";
+"测试连接" = "Test connection";
+"自动查找" = "Auto-find";
+"正在扫描同一 WiFi…" = "Scanning the same WiFi…";
+"还没找到电脑" = "No computer found yet";
+"联不上电脑" = "Can't reach computer";
+"电脑在线 · 空闲" = "Computer online · idle";
+
+/* Naming */
+"名字" = "Name";
+"改个名字" = "Rename";
+"改叫法" = "Rename";
+"保存" = "Save";
+"就叫这个" = "Use this name";
+"给你的助手起个名字" = "Name your assistant";
+"给它起个顺口的名字" = "Give it an easy name";
+"名字用在 App 里。Siri 召唤语见设置页。" = "Used in the app. See Settings for the Siri phrase.";
+"比如:答鸭" = "e.g. Ducky";
+"比如:维基" = "e.g. Wiki";
+"重名了,长按改个名" = "Name taken — long-press to rename";
+
+/* Siri */
+"Siri 召唤语(锁屏可用)" = "Siri phrase (works on lock screen)";
+
+/* Developer */
+"开发者" = "Developer";
+"复制 APNs token" = "Copy APNs token";
+"10 秒后发本地测试通知" = "Send a local test notification in 10s";
+"测试跑完了,三个全部通过" = "Tests finished — all three passed";
+"已排,锁屏听" = "Scheduled — listen on lock screen";
+
+/* Misc UI */
+"版本" = "Version";
+"助手" = "Assistant";
+"答鸭" = "Ducky";
+"在听…说吧" = "Listening… go ahead";
+"发送中…" = "Sending…";
+"处理中…" = "Working…";
+"正在从电脑读取项目…" = "Loading projects from computer…";
+"二维码不对,换成手输 6 位码" = "Invalid QR — enter the 6-digit code instead";
+"配对码无效或已过期,在电脑上重新出码" = "Code invalid or expired — generate a new one on the computer";
+"麦克风/语音识别权限被拒,去 设置 打开" = "Mic / speech permission denied — enable it in Settings";
+"关闭" = "Close";
+
+/* Interpolations (SwiftUI key form) */
+"电脑 %@" = "Computer %@";
+"答鸭 %@" = "Ducky %@";
+"%@/月" = "%@/mo";
+"订阅 Pro · %@/月" = "Subscribe to Pro · %@/mo";
+"继续吩咐 %@…" = "Keep instructing %@…";
+
+/* Dynamic status (String(localized:) call sites) */
+"正在干:%@" = "Working: %@";
+" · 排队 %lld" = " · queued %lld";
+"点一下,说\"项目名 + 要做的事\"" = "Tap and say “project + what to do”";
+"✅ 电脑已接单" = "✅ Computer accepted the task";
+"❌ 发送失败" = "❌ Send failed";
+"❌「%@」已被占用,换一个" = "❌ “%@” is taken — pick another";
+"✅ 绑定成功,这台电脑现在归你了" = "✅ Paired — this computer is now yours";
+"✅ 找到电脑 %@" = "✅ Found computer %@";
+"❌ 同一 WiFi 下没找到电脑(daemon 开着吗?)" = "❌ No computer on this WiFi (is the daemon running?)";
+"✅ 连上了 %@" = "✅ Connected to %@";
+"❌ 电脑回了 %lld" = "❌ Computer replied %lld";
+"❌ 连不上:%@" = "❌ Can't connect: %@";
+"读取订阅信息失败:%@" = "Failed to load subscription: %@";
+"购买校验未通过" = "Purchase verification failed";
+"购买失败:%@" = "Purchase failed: %@";
+"🎙 \"嘿 Siri,告诉答鸭\" → \"%@ + 要做的事\"" = "🎙 “Hey Siri, tell Ducky” → “%@ + what to do”";

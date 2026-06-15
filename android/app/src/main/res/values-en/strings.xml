@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Ducky</string>
+
+    <!-- Language-driven behavior: translate/adjust these two keys for every language pack -->
+    <!-- BCP-47 tag used for spoken output (TextToSpeech language + system voice listing) -->
+    <string name="tts_locale">en-US</string>
+    <!-- Default Microsoft Edge neural voice; must match the language of tts_locale -->
+    <string name="edge_default_voice">en-US-AriaNeural</string>
+    <!-- Separator for inline lists (e.g. online machine names) -->
+    <string name="list_separator">", "</string>
+
+    <!-- Bottom navigation -->
+    <string name="tab_home">Home</string>
+    <string name="tab_settings">Settings</string>
+    <string name="tab_refresh">Refresh</string>
+
+    <!-- Home screen -->
+    <string name="home_no_online_machines">No machines online</string>
+    <string name="home_online_machines">Online: %1$s</string>
+    <string name="error_network">Network error</string>
+    <string name="action_expand">Expand</string>
+    <string name="action_collapse">Collapse</string>
+    <string name="action_subscribe">Subscribe to announcements</string>
+    <string name="action_unsubscribe">Unsubscribe from announcements</string>
+
+    <!-- Chat screen -->
+    <string name="chat_back">Back</string>
+    <string name="chat_input_placeholder">Message %1$s…</string>
+    <string name="chat_send">Send</string>
+
+    <!-- Pairing (bind a computer) -->
+    <string name="pairing_section">Pair a computer</string>
+    <string name="pairing_hint">Run the pairing command on your computer, then enter the 6-digit code below or scan the QR code.</string>
+    <string name="pairing_code_label">Pairing code</string>
+    <string name="pairing_code_placeholder">Enter 6-digit code</string>
+    <string name="pairing_bind">Pair</string>
+    <string name="pairing_scan">Scan QR code</string>
+    <string name="pairing_bound">Paired ✓</string>
+    <string name="pairing_unbind">Unpair</string>
+    <string name="pairing_success">Paired successfully</string>
+    <string name="pairing_error_invalid">Code is invalid or expired</string>
+    <string name="pairing_error_rate">Too many attempts, try again later</string>
+    <string name="pairing_error_network">Network error, check the relay URL</string>
+    <string name="pairing_need_relay">Enter the relay URL below first</string>
+    <string name="pairing_camera_denied">Camera permission is required to scan</string>
+
+    <!-- Settings screen -->
+    <string name="settings_section_connection">Connection</string>
+    <string name="settings_relay_url">Relay URL</string>
+    <string name="settings_token">Token</string>
+    <string name="settings_save_connection">Save connection settings</string>
+    <string name="settings_section_earpiece">Earpiece announcements</string>
+    <string name="settings_announce_enabled">Announcements</string>
+    <string name="settings_tts_rate">Speech rate %1$sx</string>
+    <string name="settings_voice_engine">Voice engine</string>
+    <string name="settings_engine_edge">Microsoft cloud neural voices (recommended)</string>
+    <string name="settings_engine_edge_desc">Lifelike quality · free, no account needed · requires internet</string>
+    <string name="settings_engine_system">System TTS</string>
+    <string name="settings_engine_system_desc">Works offline, basic quality</string>
+    <string name="settings_voice_section">Voice (tap to preview)</string>
+    <string name="settings_voice_system_default">System default</string>
+    <string name="settings_no_local_voices">No offline voices found for this language. You can download a voice pack for your TTS engine in system settings.</string>
+    <string name="settings_start_service">Start announcement service</string>
+    <string name="settings_stop_service">Stop</string>
+    <string name="settings_subscribed_projects">Subscribed projects: %1$s</string>
+    <string name="settings_subscribed_none">none (tap the bell on the home screen to subscribe)</string>
+    <string name="settings_v1_note">v1 polls through a foreground service and speaks with on-device TTS; FCM push lands in phase 2.</string>
+
+    <!-- Voice preview sentences -->
+    <string name="tts_preview_system">Hi, this is Ducky. Here is how this voice sounds.</string>
+    <string name="tts_preview_edge">Hi, this is Ducky. Here is how this cloud voice sounds.</string>
+
+    <!-- Foreground service notification -->
+    <string name="notif_channel_name">Earpiece announcements</string>
+    <string name="notif_title">Ducky earpiece</string>
+    <string name="notif_text">Listening for updates from subscribed projects</string>
+    <string name="notif_stop">Stop</string>
+
+    <!-- Edge cloud voice labels (full voice set lives in EdgeTts.VOICES; labels are translated per language pack) -->
+    <string name="voice_zh_xiaoxiao">Xiaoxiao (Chinese · female · natural)</string>
+    <string name="voice_zh_xiaoyi">Xiaoyi (Chinese · female · lively)</string>
+    <string name="voice_zh_yunxi">Yunxi (Chinese · male · crisp)</string>
+    <string name="voice_zh_yunyang">Yunyang (Chinese · male · newscast)</string>
+    <string name="voice_zh_yunjian">Yunjian (Chinese · male · deep)</string>
+    <string name="voice_zh_xiaobei">Xiaobei (Chinese · female · northeastern accent)</string>
+    <string name="voice_en_aria">Aria (English · female · natural)</string>
+    <string name="voice_en_jenny">Jenny (English · female · friendly)</string>
+    <string name="voice_en_guy">Guy (English · male · clear)</string>
+</resources>
