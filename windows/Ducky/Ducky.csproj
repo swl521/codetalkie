@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms> <!-- NotifyIcon (tray) lives in WinForms -->
+    <ApplicationIcon>Assets\ducky.ico</ApplicationIcon>
+    <AssemblyName>Ducky</AssemblyName>
+    <RootNamespace>Ducky</RootNamespace>
+    <Version>0.1.0</Version>
+    <Product>答鸭 Ducky</Product>
+    <Company>Double Dragon</Company>
+    <!-- single-file friendly; no app.config drift -->
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="QRCoder" Version="1.6.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- App icon + tray icon shipped as content -->
+    <Resource Include="Assets\ducky.ico" />
+    <Resource Include="Assets\logo.png" />
+  </ItemGroup>
+
+  <!-- The bundled runtime (node.exe + agent/) is laid down next to the exe at
+       publish time by packaging/stage-runtime.ps1, then copied verbatim. We mark
+       it as a folder to copy if present during a plain build/run too. -->
+  <ItemGroup>
+    <None Include="runtime\**\*" CopyToOutputDirectory="PreserveNewest" Condition="Exists('runtime')" />
+    <!-- No-Inno fallback installer ships next to the exe in every build/publish. -->
+    <None Include="..\packaging\install.bat" CopyToOutputDirectory="PreserveNewest" Link="install.bat" />
+  </ItemGroup>
+
+</Project>

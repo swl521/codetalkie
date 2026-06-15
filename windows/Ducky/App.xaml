@@ -1,0 +1,10 @@
+<Application x:Class="Ducky.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ShutdownMode="OnExplicitShutdown">
+    <!-- No StartupUri: the app has no main window. The tray icon is the UI.
+         ShutdownMode=OnExplicitShutdown keeps the process alive when transient
+         windows (QR popup) close. -->
+    <Application.Resources>
+    </Application.Resources>
+</Application>
