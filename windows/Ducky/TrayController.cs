@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.Drawing;
+using System.IO;
+using System.Linq;
 using System.Text.Json.Nodes;
 using System.Windows.Forms; // NotifyIcon / ContextMenuStrip
 using Application = System.Windows.Application;
