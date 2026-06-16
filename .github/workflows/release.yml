@@ -58,8 +58,34 @@ jobs:
           name: android
           path: out/*
 
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build menubar app (ad-hoc unsigned) + embed node & agent
+        run: |
+          set -e
+          NODE=v22.14.0
+          curl -fsSL "https://nodejs.org/dist/$NODE/node-$NODE-darwin-arm64.tar.gz" -o node.tgz
+          tar xzf node.tgz
+          xcodebuild -project menubar/EarpieceMenubar.xcodeproj -scheme EarpieceMenubar \
+            -configuration Release -derivedDataPath menubar/build \
+            CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO build
+          APP=$(find menubar/build -name '*.app' -path '*Release*' | head -1)
+          echo "built: $APP"
+          mkdir -p "$APP/Contents/Resources/node/bin" "$APP/Contents/Resources/agent"
+          cp "node-$NODE-darwin-arm64/bin/node" "$APP/Contents/Resources/node/bin/node"
+          cp -R agent/src agent/lang "$APP/Contents/Resources/agent/"
+          codesign --force --deep -s - "$APP" || true
+          mkdir -p out
+          ditto -c -k --keepParent "$APP" "out/Ducky-macOS-arm64.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac
+          path: out/*
+
   release:
-    needs: [windows, android]
+    needs: [windows, android, mac]
     if: always()
     runs-on: ubuntu-latest
     steps:
