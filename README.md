@@ -18,8 +18,8 @@
 |------|------|------|
 | **Windows**(x64) | `DuckySetup-Windows-x64.exe` | 双击安装(装到 `%LOCALAPPDATA%\Ducky`、建开机自启);或下 `Ducky-Windows-x64.zip` 解压跑 `install.bat` |
 | **Android** | `Codetalkie-Android.apk` | 侧载安装(设置里允许"未知来源")|
+| **macOS**(Apple Silicon) | `Ducky-macOS-arm64.zip` | 解压 → 拖进「应用程序」→ **右键 → 打开**(过 Gatekeeper,因 ad-hoc 未公证)|
 | **iOS** | TestFlight | 见仓库内 TestFlight 邀请链接 |
-| **macOS** | 暂从源码构建 | `menubar/`:`dotnet`/Xcode 构建,或 `scripts/build-mac.sh`(签名+公证待补) |
 
 装好后:菜单栏/托盘出现答鸭图标 → 点「配对码 / 二维码」→ 手机 App 扫码或输 6 位码绑定 → 这台电脑的进展就播进你耳机。绑多台手机:点「绑定新手机(出一个新码)」各扫一次。
 
