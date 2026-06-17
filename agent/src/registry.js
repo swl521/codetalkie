@@ -30,7 +30,10 @@ export function buildRegistry(entries, aliases = {}) {
   // 去重 key:claude/codex 一目录一项目(agent@cwd);hermes 多会话共用一个 cwd,
   // 必须把 sessionId 也并进 key,否则同 cwd 的会话会互相覆盖(只剩一条)。
   for (const e of entries) {
-    const key = e.sessionId ? `${e.agent}@${e.cwd}@${e.sessionId}` : `${e.agent}@${e.cwd}`;
+    // claude/codex 现在也带 sessionId(供详情页显示),但去重 key 仍按 cwd —— 一目录一项目,
+    // 且别名查表用 agent@cwd,不能把 sessionId 并进 key。只有 hermes(多会话共用 ~/.hermes)
+    // 必须用 sessionId 区分,否则同 cwd 的会话互相覆盖。
+    const key = (e.agent === 'hermes' && e.sessionId) ? `${e.agent}@${e.cwd}@${e.sessionId}` : `${e.agent}@${e.cwd}`;
     byKey.set(key, { ...e, name: e.base, aliased: false });
   }
   for (const [alias, t] of Object.entries(aliases)) {

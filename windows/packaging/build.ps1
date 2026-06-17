@@ -11,6 +11,7 @@
 [CmdletBinding()]
 param(
     [string]$NodeVersion = "22.14.0",
+    [string]$Version = "0.1.0",
     [switch]$SkipRuntime
 )
 
@@ -45,7 +46,7 @@ if (-not $iscc) {
 if ($iscc) {
     Write-Host "==> Inno Setup compile"
     $iss = Join-Path $PSScriptRoot "ducky.iss"
-    & $iscc.Source "/dMyAppVersion=0.1.0" "/dPublishDir=$publishDir" $iss
+    & $iscc.Source "/dMyAppVersion=$Version" "/dPublishDir=$publishDir" $iss
     Write-Host "installer -> windows\dist\"
 } else {
     Write-Host "Inno Setup (ISCC) not found — skipping installer."

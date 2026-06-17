@@ -104,8 +104,14 @@ export function runTask({
       args,
       cwd,
       mode: profile.mode,
-      // 仅 claude 注入 CLAUDE_CODE_OAUTH_TOKEN;codex/hermes 用各自的认证
-      env: agent === 'claude' && bin === 'claude' ? loadAuthEnv() : undefined,
+      // 仅 claude 注入 CLAUDE_CODE_OAUTH_TOKEN;codex/hermes 用各自的认证。
+      // approval=on(无头走 approval-mcp)时设 EARPIECE_HOOK_SKIP,叫全局 PreToolUse hook 让路,
+      // 否则同一请求会被 MCP 和 hook 各弹一遍。没 MCP 时不设 → 让 hook 也能给无头补批准。
+      env: (() => {
+        const e = agent === 'claude' && bin === 'claude' ? (loadAuthEnv() || {}) : {};
+        if (approval) e.EARPIECE_HOOK_SKIP = '1';
+        return Object.keys(e).length ? e : undefined;
+      })(),
       onMessage: (msg) => {
         for (const e of profile.normalize(msg)) {
           if (e.type === EVENT.SESSION_STARTED && e.sessionId) {

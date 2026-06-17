@@ -62,3 +62,11 @@ echo "已安装并加载 $LABEL"
 echo "  node:  $NODE_BIN"
 echo "  脚本:  $DAEMON_JS"
 echo "  日志:  $LOG_FILE"
+
+# 顺手装批准 hook:让终端里开着的 claude 要权限时也弹手机批准(幂等)。
+# Mac 多为你坐键盘前的工作站 → 默认**不建**路由标记,hook 装着但休眠,不打扰你的本地操作。
+# 要把这台的终端批准也送手机(如常不在机前):touch ~/.earpiece/approval-to-phone
+REPO_ROOT="$(cd "$(dirname "$DAEMON_JS")/../.." && pwd)"
+"$NODE_BIN" "$REPO_ROOT/scripts/install-approval-hook.mjs" \
+  || echo "  ⚠ 批准 hook 安装跳过(可手动:node scripts/install-approval-hook.mjs)"
+echo "  批准 hook 已装但休眠(工作站默认);要送手机:touch ~/.earpiece/approval-to-phone"

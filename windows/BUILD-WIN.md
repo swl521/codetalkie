@@ -15,7 +15,7 @@ AppId `com.example.codetalkie.desktop` · 应用名 **答鸭 Ducky** · 监听 d
 | .NET SDK | **9.0.300 已装**(可编 net8.0;无需 winget install) |
 | Node(系统) | v22.14.0(仅勘察用;应用**不依赖**系统 node,自带一份) |
 | Inno Setup (ISCC) | 未勘察安装与否 → 见「打包现状」 |
-| 仓库 | `C:\Users\you\claude-remo-app`(git archive 部署,含 agent/) |
+| 仓库 | `C:\Users\you\codetalkie`(git archive 部署,含 agent/) |
 
 **实测**:在该机已成功 `dotnet build`(0 警告 0 错误)、`dotnet publish` 自包含、
 并验证自带 node.exe 能 `--check` 通过 daemon.js。
@@ -81,7 +81,7 @@ windows/
 
 ## 5. 构建 / 打包命令
 
-在 Windows 机仓库根 `C:\Users\you\claude-remo-app` 执行:
+在 Windows 机仓库根 `C:\Users\you\codetalkie` 执行:
 
 ```powershell
 # 一步到位(stage 运行时 → 自包含 publish →(有 ISCC 则)Inno 安装包)

@@ -63,7 +63,11 @@ export function scanClaude(root = join(homedir(), '.claude', 'projects')) {
     const newest = sorted[0]; // 活跃会话:永远跟最新档案走
     if (!out.has(cwd) || out.get(cwd).lastActive < newest.m) out.set(cwd, { lastActive: newest.m, file: newest.f });
   }
-  return [...out].map(([cwd, v]) => ({ cwd, agent: 'claude', base: basename(cwd), lastActive: v.lastActive, file: v.file }));
+  // sessionId = 最新档案文件名去掉 .jsonl(Claude 的会话 UUID);供手机详情页显示。
+  return [...out].map(([cwd, v]) => ({
+    cwd, agent: 'claude', base: basename(cwd), lastActive: v.lastActive, file: v.file,
+    sessionId: basename(v.file).replace(/\.jsonl$/i, '') || null,
+  }));
 }
 
 // Codex:~/.codex/sessions/<年>/<月>/<日>/rollout-*.jsonl,首行 session_meta 含 cwd
@@ -88,13 +92,35 @@ export function scanCodex(root = join(homedir(), '.codex', 'sessions'), maxFiles
     const cwd = decodeCwd(CWD_RE.exec(readHead(p, 8192))?.[1]);
     if (cwd && existsSync(cwd) && !isJunkCwd(cwd) && !out.has(cwd)) out.set(cwd, { lastActive: m, file: p });
   }
-  return [...out].map(([cwd, v]) => ({ cwd, agent: 'codex', base: basename(cwd), lastActive: v.lastActive, file: v.file }));
+  return [...out].map(([cwd, v]) => ({
+    cwd, agent: 'codex', base: basename(cwd), lastActive: v.lastActive, file: v.file,
+    sessionId: codexSessionIdFromFile(v.file),
+  }));
 }
 
 // rollout 文件名尾部的 uuid 就是 codex session id(与首行 session_meta.payload.id 一致,实测)。
 const CODEX_ID_RE = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i;
 export function codexSessionIdFromFile(file) {
   return CODEX_ID_RE.exec(file ?? '')?.[1] ?? null;
+}
+
+// agent-hub 活终端窗口:正开着的 CLI 会话(注册在 ~/.claude/agent-hub/registry.json)。
+// 这些是"实时线程",和磁盘扫出来的项目合并后上报,手机才看得到正开着的窗口(带 PID/状态)。
+export function scanHubWindows(registryPath = join(homedir(), '.claude', 'agent-hub', 'registry.json')) {
+  let reg;
+  try { reg = JSON.parse(readFileSync(registryPath, 'utf8')); } catch { return []; }
+  const out = [];
+  for (const [, s] of Object.entries(reg.sessions ?? {})) {
+    if (!s || !s.cwd || !s.pid) continue;
+    try { process.kill(s.pid, 0); } catch { continue; } // 死进程残留跳过
+    if (isJunkCwd(s.cwd)) continue;
+    out.push({
+      cwd: s.cwd, agent: s.agent || 'claude', base: basename(s.cwd),
+      lastActive: typeof s.lastActive === 'number' ? s.lastActive : Date.now(),
+      sessionId: s.sessionId || null, pid: s.pid, status: s.status || 'idle', live: true,
+    });
+  }
+  return out;
 }
 
 // 该目录最新一条 codex 会话(终端 TUI 聊的和手机无头跑的都落盘在同一处)——

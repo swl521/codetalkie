@@ -28,6 +28,13 @@ cmd /c "schtasks /Delete /TN $TaskName /F >nul 2>&1"
 schtasks /Create /TN $TaskName /TR "wscript.exe `"$Vbs`"" /SC ONLOGON /RL LIMITED /F | Out-Null
 schtasks /Run /TN $TaskName | Out-Null
 
+# 顺手装批准 hook:让终端里开着的 claude 要权限时也弹手机批准(幂等)
+try { & $Node (Join-Path $RepoRoot "scripts\install-approval-hook.mjs") }
+catch { Write-Host "  ⚠ 批准 hook 安装跳过(可手动:node scripts\install-approval-hook.mjs)" }
+# 远程/手机驱动机 → 打开"批准送手机"路由标记(交互式工作站可删此文件休眠)
+New-Item -ItemType File -Force -Path (Join-Path $LogDir "approval-to-phone") | Out-Null
+Write-Host "  ✓ 批准送手机已开(标记 $LogDir\approval-to-phone;删它即休眠)"
+
 Write-Host "已安装并启动 $TaskName"
 Write-Host "  node: $Node"
 Write-Host "  脚本: $DaemonJs"

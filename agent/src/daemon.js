@@ -14,7 +14,7 @@ import { summarizeToolRequest } from './translate.js';
 import { t } from './i18n.js';
 import { speak } from './speaker.js';
 import { buildPayload, sendPush } from './apns.js';
-import { scanClaude, scanCodex, scanHermesSessions, exportHermesSession, parseHermesHistory } from './scanProjects.js';
+import { scanClaude, scanCodex, scanHermesSessions, scanHubWindows, exportHermesSession, parseHermesHistory } from './scanProjects.js';
 import { buildRegistry, resolveSpoken, saveAlias, loadAliases } from './registry.js';
 import { findHubSession, runViaHub } from './hubBridge.js';
 import { resolveAccountKey } from './account.js';
@@ -28,6 +28,7 @@ export function createDaemon({
   logLine = () => {}, // 字幕回放:{project, role:'user'|'assistant'|'event', text}
   notify = () => {}, // 系统提示音(如重名拒绝):({project, text})
   resolver = null,   // 语音解析(text)→job|{ambiguous}|null;不传则用 projects 映射表
+  projectForCwd = () => null, // cwd→项目名:终端 hook 批准时 current 为空,按目录归属到对应项目
 }) {
   const queue = [];
   let current = null;
@@ -160,10 +161,11 @@ export function createDaemon({
       let parsed;
       try { parsed = JSON.parse(body); } catch { res.writeHead(400); res.end('bad json'); return; }
       const id = randomUUID().slice(0, 8);
-      const project = current?.project ?? 'agent';
+      // 项目归属:无头 runTask 有 current;终端 hook 没有 → 用请求里的 project,或按 cwd 查注册表
+      const project = parsed.project ?? current?.project ?? (parsed.cwd && projectForCwd(parsed.cwd)) ?? 'agent';
       const summary = summarizeToolRequest(parsed.tool_name, parsed.input);
       const timer = setTimeout(() => respondApproval(id, false, t('approvalTimeout')), approvalTimeoutMs);
-      approvals.set(id, { id, res, timer, input: parsed.input ?? {}, project, summary });
+      approvals.set(id, { id, res, timer, input: parsed.input ?? {}, project, summary, ts: Date.now() });
       logLine({ project, role: 'event', text: t('waitingApproval', { summary }) });
       announce({ id, project, summary });
       return; // res 不结束,长挂等 /approval/respond
@@ -208,7 +210,7 @@ export function createDaemon({
     state: () => ({
       running: current?.project ?? null,
       queued: queue.length,
-      pending: [...approvals.values()].map(({ id, project, summary }) => ({ id, project, summary })),
+      pending: [...approvals.values()].map(({ id, project, summary, ts }) => ({ id, project, summary, ts })),
       pendingChoices: [...choices.values()].map(({ id, project, question, options }) => ({ id, project, question, options })),
     }),
   };
@@ -388,6 +390,8 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
 
   const daemon = createDaemon({
     token, projects, announce, announceChoice, logLine, notify,
+    // 终端 hook 批准:按 cwd 在注册表里找项目名(current 为空时归属到对的会话)
+    projectForCwd: (cwd) => registry.find((e) => e.cwd === cwd)?.name ?? null,
     // 桥优先:claude 项目若本机有"同目录的活终端窗口"(agent-hub),指令注入那个窗口
     // —— 手机和电脑前是同一个对话。注入失败(没终端/端口死)才退回无头分身。
     runner: async (job) => {
@@ -411,11 +415,26 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   // 摆成一个只读项目(scanHermesSessions 跑 `hermes sessions list` 解析,带 sessionId 句柄)。
 
   async function refreshRegistry() {
-    registry = buildRegistry([...scanClaude(), ...scanCodex(), ...scanHermesSessions()], loadAliases(aliasesPath));
+    // 磁盘扫出来的项目 + 正开着的实时终端窗口(agent-hub)。同 cwd 的窗口覆盖到对应项目上
+    // (标记 live/pid/status,带上窗口的 sessionId),没有对应项目的窗口则单独成条 ——
+    // 这样手机列表既有历史项目,也能看到"正开着的线程"。
+    const scanned = [...scanClaude(), ...scanCodex(), ...scanHermesSessions()];
+    const byCwd = new Map(scanned.map((e) => [`${e.agent}@${e.cwd}`, e]));
+    for (const w of scanHubWindows()) {
+      const hit = byCwd.get(`${w.agent}@${w.cwd}`);
+      if (hit) {
+        hit.live = true; hit.pid = w.pid; hit.status = w.status;
+        if (w.sessionId) hit.sessionId = w.sessionId;
+        if (w.lastActive > (hit.lastActive ?? 0)) hit.lastActive = w.lastActive;
+      } else {
+        scanned.push(w); byCwd.set(`${w.agent}@${w.cwd}`, w);
+      }
+    }
+    registry = buildRegistry(scanned, loadAliases(aliasesPath));
     daemon.setResolver((text) => resolveSpoken(text, registry));
     if (relayConfig) {
-      const body = JSON.stringify(registry.map(({ name, cwd, agent, base, lastActive, needsRename, aliased }) =>
-        ({ name, cwd, agent, base, lastActive, needsRename, aliased })));
+      const body = JSON.stringify(registry.map(({ name, cwd, agent, base, lastActive, needsRename, aliased, sessionId, live, pid, status }) =>
+        ({ name, cwd, agent, base, lastActive, needsRename, aliased, sessionId: sessionId ?? null, live: !!live, pid: pid ?? null, status: status ?? null })));
       for (const u of relayConfig.urls) {
         fetch(`${u}/registry?machine=${encodeURIComponent(machine)}`, {
           method: 'POST',

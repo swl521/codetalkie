@@ -7,8 +7,8 @@
 
 ```powershell
 # 1. 拿代码(私有仓需先 gh auth login)
-git clone https://github.com/swl521/claude-remo-app
-cd claude-remo-app
+git clone https://github.com/swl521/codetalkie
+cd codetalkie
 
 # 2. 写配置:同一个 relay、同一个 token(和 Mac 共用)
 mkdir $env:USERPROFILE\.earpiece -Force

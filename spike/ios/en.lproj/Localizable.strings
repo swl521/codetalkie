@@ -133,3 +133,20 @@
 "购买校验未通过" = "Purchase verification failed";
 "购买失败:%@" = "Purchase failed: %@";
 "🎙 \"嘿 Siri,告诉答鸭\" → \"%@ + 要做的事\"" = "🎙 “Hey Siri, tell Ducky” → “%@ + what to do”";
+
+/* 会话详情面板 + 时间戳 */
+"昨天" = "Yesterday";
+"详情" = "Details";
+"路径" = "Path";
+"进程" = "Process";
+"身份" = "Identity";
+"引擎" = "Engine";
+"机器" = "Machine";
+"状态" = "Status";
+"无活动窗口" = "No live window";
+"最后活跃" = "Last active";
+"未知" = "Unknown";
+"待批准" = "Pending approval";
+"拷贝" = "Copy";
+"批准" = "Approve";
+"拒绝" = "Deny";

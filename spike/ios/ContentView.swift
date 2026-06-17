@@ -8,6 +8,7 @@ struct PendingApproval: Identifiable, Equatable {
     let id: String
     let project: String
     let summary: String
+    var ts: Double = 0   // 请求发起时间(毫秒),让你分清是不是昨天没处理的
 }
 
 struct DaemonStatus: Equatable {
@@ -28,6 +29,11 @@ struct RegEntry: Identifiable, Equatable {
     let base: String
     let machine: String // 项目所在电脑(Mac / Win …)
     let needsRename: Bool
+    var lastActive: Double = 0      // 最后活跃(毫秒时间戳),详情页显示
+    var sessionId: String? = nil    // claude/codex/hermes 的会话句柄
+    var pid: Int? = nil             // 实时窗口的进程号(agent-hub)
+    var status: String? = nil       // 实时窗口状态(idle/busy/…)
+    var live: Bool = false          // 是否有正开着的终端窗口
 }
 
 enum API {
@@ -87,10 +93,30 @@ final class SubsStore: ObservableObject {
     }
 }
 
+// 待批准全局存:批准是产品的"刹车",不管在哪个页面(主页/对话页/设置)都要能看到能点,
+// 绝不能只在主页弹。ContentView 顶部用它做全局悬浮横幅。
+final class ApprovalStore: ObservableObject {
+    @Published var pending: [PendingApproval] = []
+    func poll() async {
+        guard let json = await API.json("/status") as? [String: Any] else { return }
+        let next = (json["pending"] as? [[String: Any]] ?? []).compactMap { o -> PendingApproval? in
+            guard let id = o["id"] as? String else { return nil }
+            return PendingApproval(id: id, project: o["project"] as? String ?? "",
+                                   summary: o["summary"] as? String ?? "", ts: o["ts"] as? Double ?? 0)
+        }
+        if next != pending { pending = next }
+    }
+    func respond(_ p: PendingApproval, approve: Bool) {
+        pending.removeAll { $0.id == p.id }   // 乐观移除
+        Task { _ = try? await URLSession.shared.data(for: API.request("/approval/respond", method: "POST", body: ["id": p.id, "approve": approve])) }
+    }
+}
+
 struct ContentView: View {
     @StateObject private var bus = RefreshBus()
     @StateObject private var store = Store()
     @StateObject private var subs = SubsStore()
+    @StateObject private var approvals = ApprovalStore()
     @State private var tab = 0
 
     var body: some View {
@@ -105,10 +131,57 @@ struct ContentView: View {
         .environmentObject(bus)
         .environmentObject(store)
         .environmentObject(subs)
+        .environmentObject(approvals)
+        // 全局悬浮批准横幅:盖在所有页面最上层(主页/对话页/设置都看得到、点得到)
+        .overlay(alignment: .top) { approvalOverlay }
         .onAppear { BroadcastService.shared.startForeground() }  // 启动播报轮询(前台;耳机模式开则后台也念)
+        .task {
+            // 全局轮询待批准(每 3 秒),与具体页面无关 —— 不管你停在哪一页都不漏批准
+            while !Task.isCancelled {
+                await approvals.poll()
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+            }
+        }
         .sheet(isPresented: $store.showPaywall) {
             PaywallView().environmentObject(store)
         }
+    }
+
+    @ViewBuilder private var approvalOverlay: some View {
+        if !approvals.pending.isEmpty {
+            VStack(spacing: 8) {
+                ForEach(approvals.pending) { p in globalApprovalBanner(p) }
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 4)
+            .animation(.easeInOut(duration: 0.2), value: approvals.pending)
+        }
+    }
+
+    private func globalApprovalBanner(_ p: PendingApproval) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Label("\(p.project):\(p.summary),等你批准", systemImage: "bell.fill")
+                    .font(.footnote).bold().foregroundStyle(.white)
+                Spacer(minLength: 6)
+                if !TS.label(p.ts).isEmpty {
+                    Text(TS.label(p.ts)).font(.caption2).foregroundStyle(.white.opacity(0.85))
+                }
+            }
+            HStack(spacing: 10) {
+                Button { approvals.respond(p, approve: true) } label: {
+                    Text("批准").font(.footnote).bold().frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent).tint(.white)
+                Button(role: .destructive) { approvals.respond(p, approve: false) } label: {
+                    Text("拒绝").font(.footnote).frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered).tint(.white)
+            }
+        }
+        .padding(12)
+        .background(.orange, in: RoundedRectangle(cornerRadius: 14))
+        .shadow(color: .black.opacity(0.25), radius: 8, y: 3)
     }
 
     // Material 3 Navigation Bar(design.google):三项均分、选中项胶囊高亮、图标上文字下
@@ -178,7 +251,7 @@ struct HomeView: View {
             ScrollView {
                 VStack(spacing: 14) {
                     statusLine
-                    ForEach(status.pending) { approvalBanner($0) }
+                    // 待批准横幅已上移到 ContentView 全局悬浮层(任何页面都弹),这里不再单独渲染
                     micButton
                     if speech.recording, let t = micTarget {
                         Text("🎙️ 对「\(t)」说:\(speech.transcript.isEmpty ? "在听…松手即发" : speech.transcript)")
@@ -366,11 +439,15 @@ struct HomeView: View {
                     .foregroundStyle(subs.contains(e.name) ? Color.accentColor : Color(.tertiaryLabel))
             }
             .buttonStyle(.plain)
-            NavigationLink(destination: ChatView(project: e.name)) {
+            NavigationLink(destination: ChatView(entry: e)) {
                 HStack {
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(e.name).font(.subheadline).bold()
-                            .foregroundStyle(e.needsRename ? .orange : .primary)
+                        HStack(spacing: 5) {
+                            // 实时窗口绿点:正开着的终端线程(agent-hub),区别于纯磁盘项目
+                            if e.live { Circle().fill(.green).frame(width: 7, height: 7) }
+                            Text(e.name).font(.subheadline).bold()
+                                .foregroundStyle(e.needsRename ? .orange : .primary)
+                        }
                         Text(e.needsRename ? "重名了,长按改个名" : (lastLines[e.name] ?? e.base))
                             .font(.caption)
                             .foregroundStyle(e.needsRename ? .orange : .secondary)
@@ -460,7 +537,8 @@ struct HomeView: View {
             s.queued = json["queued"] as? Int ?? 0
             s.pending = (json["pending"] as? [[String: Any]] ?? []).compactMap { o in
                 guard let id = o["id"] as? String else { return nil }
-                return PendingApproval(id: id, project: o["project"] as? String ?? "", summary: o["summary"] as? String ?? "")
+                return PendingApproval(id: id, project: o["project"] as? String ?? "", summary: o["summary"] as? String ?? "",
+                                       ts: o["ts"] as? Double ?? 0)
             }
             status = s
         } else {
@@ -473,7 +551,12 @@ struct HomeView: View {
                 return RegEntry(name: name, cwd: cwd, agent: agent,
                                 base: o["base"] as? String ?? "",
                                 machine: o["machine"] as? String ?? "?",
-                                needsRename: o["needsRename"] as? Bool ?? false)
+                                needsRename: o["needsRename"] as? Bool ?? false,
+                                lastActive: o["lastActive"] as? Double ?? 0,
+                                sessionId: o["sessionId"] as? String,
+                                pid: o["pid"] as? Int,
+                                status: o["status"] as? String,
+                                live: o["live"] as? Bool ?? false)
             }
         }
         if let arr = await API.json("/projects") as? [[String: Any]] {
