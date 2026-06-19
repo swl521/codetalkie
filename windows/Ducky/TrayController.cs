@@ -98,10 +98,36 @@ public sealed class TrayController : IDisposable
         _icon.Text = alive ? Loc.L("答鸭 Ducky · 运行中", "Ducky · running") : Loc.L("答鸭 Ducky · 未运行", "Ducky · not running");
         _autoStartItem.Checked = SafeIsAutoStart();
 
-        int n = await RelayClient.BoundDeviceCountAsync();
-        _devicesItem.Text = n < 0 ? Loc.L("已绑定:连接中继查不到", "Paired: relay unreachable")
-            : n == 0 ? Loc.L("还没绑定手机 — 让手机扫配对二维码", "No phones paired — scan the QR code")
-            : Loc.L($"已绑定:{n} 台手机", $"Paired phones: {n}");
+        var devices = await RelayClient.BoundDevicesAsync();
+        _devicesItem.DropDownItems.Clear();
+        if (devices == null)
+        {
+            _devicesItem.Text = Loc.L("已绑定:连接中继查不到", "Paired: relay unreachable");
+        }
+        else if (devices.Count == 0)
+        {
+            _devicesItem.Text = Loc.L("还没绑定手机 — 让手机扫配对二维码", "No phones paired — scan the QR code");
+        }
+        else
+        {
+            _devicesItem.Text = Loc.L($"已绑定:{devices.Count} 台手机", $"Paired phones: {devices.Count}");
+            foreach (var d in devices)
+                _devicesItem.DropDownItems.Add(new ToolStripMenuItem($"📱 {ShortName(d.Name)}  ·  {RelTime(d.LastSeen)}") { Enabled = false });
+        }
+    }
+
+    // 设备名 "Miles 的 iPhone·1a2b3c4d" → 去掉 ·后缀
+    private static string ShortName(string s) => s.Split('·')[0];
+
+    // 毫秒时间戳 → 相对时间
+    private static string RelTime(long ms)
+    {
+        if (ms <= 0) return Loc.L("未知", "unknown");
+        var sec = (DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - ms) / 1000;
+        if (sec < 60) return Loc.L("刚刚", "just now");
+        if (sec < 3600) return Loc.L($"{sec / 60} 分钟前", $"{sec / 60}m ago");
+        if (sec < 86400) return Loc.L($"{sec / 3600} 小时前", $"{sec / 3600}h ago");
+        return Loc.L($"{sec / 86400} 天前", $"{sec / 86400}d ago");
     }
 
     private void ShowPairWindow(bool forceNew = false)

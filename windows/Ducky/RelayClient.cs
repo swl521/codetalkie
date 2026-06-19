@@ -59,7 +59,7 @@ public sealed class RelayClient
     }
 
     /// <summary>这个账户绑了几台手机(中继 /status 的 devices 字段)。失败回 -1。</summary>
-    public static async Task<int> BoundDeviceCountAsync(CancellationToken ct = default)
+    public static async Task<List<BoundDevice>?> BoundDevicesAsync(CancellationToken ct = default)
     {
         try
         {
@@ -68,10 +68,29 @@ public sealed class RelayClient
             using var req = new HttpRequestMessage(HttpMethod.Get, $"{relay}/status");
             req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
             using var resp = await Http.SendAsync(req, ct);
-            if (!resp.IsSuccessStatusCode) return -1;
+            if (!resp.IsSuccessStatusCode) return null;
             var json = JsonNode.Parse(await resp.Content.ReadAsStringAsync(ct))!.AsObject();
-            return json["devices"]?.GetValue<int>() ?? 0;
+            var list = new List<BoundDevice>();
+            if (json["deviceList"] is JsonArray arr)
+            {
+                foreach (var d in arr)
+                {
+                    var name = d?["name"]?.GetValue<string>() ?? "?";
+                    var ts = (long)(d?["lastSeen"]?.GetValue<double>() ?? 0);
+                    list.Add(new BoundDevice(name, ts));
+                }
+            }
+            else
+            {
+                // 老中继只给数量、无名字 → 占位填充
+                int n = json["devices"]?.GetValue<int>() ?? 0;
+                for (int i = 0; i < n; i++) list.Add(new BoundDevice("?", 0));
+            }
+            return list;
         }
-        catch { return -1; }
+        catch { return null; }
     }
 }
+
+/// <summary>本账户绑定的一台手机:配对时报的 UIDevice.name·设备ID 与最后在线毫秒时间戳。</summary>
+public sealed record BoundDevice(string Name, long LastSeen);
