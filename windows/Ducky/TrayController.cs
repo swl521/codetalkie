@@ -91,10 +91,13 @@ public sealed class TrayController : IDisposable
         _statusTimer.Start();
     }
 
+    // 每次改动都 bump,用户靠它确认软件真的更新了
+    private const string AppVersion = "0.1.6 · 0619d";
+
     private async Task RefreshStatusAsync()
     {
         bool alive = await RelayClient.LocalDaemonAliveAsync();
-        _statusItem.Text = alive ? Loc.L("连接状态:运行中", "Status: running") : Loc.L("连接状态:未运行", "Status: not running");
+        _statusItem.Text = (alive ? Loc.L("连接状态:运行中", "Status: running") : Loc.L("连接状态:未运行", "Status: not running")) + $" · v{AppVersion}";
         _icon.Text = alive ? Loc.L("答鸭 Ducky · 运行中", "Ducky · running") : Loc.L("答鸭 Ducky · 未运行", "Ducky · not running");
         _autoStartItem.Checked = SafeIsAutoStart();
 
@@ -114,7 +117,9 @@ public sealed class TrayController : IDisposable
             foreach (var d in devices)
             {
                 var name = d.Name;
-                var it = new ToolStripMenuItem($"📱 {ShortName(name)}  ·  {RelTime(d.LastSeen)}   ✕")
+                var sfx = Suffix(name);
+                var idPart = sfx.Length == 0 ? "" : $" ({sfx})";
+                var it = new ToolStripMenuItem($"📱 {ShortName(name)}{idPart}  ·  {RelTime(d.LastSeen)}   ✕")
                 {
                     ToolTipText = Loc.L("点击解绑这台手机", "Click to unbind this phone")
                 };
@@ -135,6 +140,13 @@ public sealed class TrayController : IDisposable
 
     // 设备名 "Miles 的 iPhone·1a2b3c4d" → 去掉 ·后缀
     private static string ShortName(string s) => s.Split('·')[0];
+
+    // ·后缀(vendorID 前8位)——两台同名手机靠它区分
+    private static string Suffix(string s)
+    {
+        var i = s.IndexOf('·');
+        return i >= 0 && i + 1 < s.Length ? s[(i + 1)..] : "";
+    }
 
     // 毫秒时间戳 → 相对时间
     private static string RelTime(long ms)

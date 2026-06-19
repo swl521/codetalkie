@@ -585,10 +585,16 @@ struct SettingsView: View {
     @AppStorage("lanIP") private var lanIP = ""
     @AppStorage("speechLocale") private var speechLocale = ""  // 语音识别语言,空=系统语言
     @AppStorage("accountKey") private var accountKey = ""       // 绑定电脑后的账户密钥
+    @AppStorage("deviceNick") private var deviceNick = ""       // 给这台手机起的名,空=用系统机型名
     @State private var pairCode = ""
     @State private var showScanner = false
     @State private var boundDevices: [BoundDevice] = []   // 本账户绑定的手机(中继 /status deviceList)
     @FocusState private var codeFocused: Bool
+
+    // 本机配对标识(identifierForVendor 前 8 位)——两台同名 iPhone 靠它区分
+    private var myDeviceSuffix: String {
+        String((UIDevice.current.identifierForVendor?.uuidString ?? "").prefix(8))
+    }
 
     // 二维码内容 codetalkie://pair?code=XXXXXX → 取 6 位码;也兼容直接是 6 位数字。
     static func codeFromQR(_ s: String) -> String? {
@@ -624,6 +630,10 @@ struct SettingsView: View {
                     if accountKey.isEmpty {
                         Text("在电脑上运行 答鸭,会显示一个 6 位配对码,输到这里绑定。")
                             .font(.caption).foregroundStyle(.secondary)
+                        TextField(String(localized: "给这台手机起个名(可选,如 工作机)"), text: $deviceNick)
+                            .textFieldStyle(.roundedBorder)
+                        Text(String(localized: "本机标识:\(myDeviceSuffix) · 不起名也能靠它区分两台手机"))
+                            .font(.caption2).foregroundStyle(.secondary)
                         HStack {
                             TextField("6 位配对码", text: $pairCode)
                                 .keyboardType(.numberPad)
@@ -668,7 +678,15 @@ struct SettingsView: View {
                     Section(String(localized: "已绑定的手机")) {
                         ForEach(boundDevices) { d in
                             HStack {
-                                Label(shortDeviceName(d.name), systemImage: "iphone")
+                                Label {
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text(shortDeviceName(d.name))
+                                        if !deviceSuffix(d.name).isEmpty {
+                                            Text(deviceSuffix(d.name) + (deviceSuffix(d.name) == myDeviceSuffix ? String(localized: " · 本机") : ""))
+                                                .font(.caption2).foregroundStyle(.secondary)
+                                        }
+                                    }
+                                } icon: { Image(systemName: "iphone") }
                                 Spacer()
                                 Text(relTime(d.lastSeen)).font(.caption).foregroundStyle(.secondary)
                             }
@@ -837,6 +855,11 @@ struct SettingsView: View {
     private func shortDeviceName(_ s: String) -> String {
         s.split(separator: "·").first.map(String.init) ?? s
     }
+    // 取 ·后缀(vendorID 前8位)——区分两台同名手机
+    private func deviceSuffix(_ s: String) -> String {
+        let parts = s.split(separator: "·", maxSplits: 1)
+        return parts.count > 1 ? String(parts[1]) : ""
+    }
     // 毫秒时间戳 → 相对时间
     private func relTime(_ ms: Double) -> String {
         guard ms > 0 else { return String(localized: "未知") }
@@ -857,7 +880,10 @@ struct SettingsView: View {
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
             // 带稳定设备 id(去重「已绑 N 台」计数)+ 机型名
             let devId = UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
-            req.httpBody = try? JSONSerialization.data(withJSONObject: ["code": code, "device": "\(UIDevice.current.name)·\(devId.prefix(8))"])
+            // 设备名 = 用户起的昵称(没起就用系统机型名)+ ·标识前8位(永远唯一,两台同名机靠它区分)
+            let nick = deviceNick.trimmingCharacters(in: .whitespaces)
+            let label = nick.isEmpty ? UIDevice.current.name : nick
+            req.httpBody = try? JSONSerialization.data(withJSONObject: ["code": code, "device": "\(label)·\(devId.prefix(8))"])
             guard let (data, resp) = try? await URLSession.shared.data(for: req),
                   (resp as? HTTPURLResponse)?.statusCode == 200,
                   let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],

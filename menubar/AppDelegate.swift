@@ -27,6 +27,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let defaultRelays = ["https://your-relay.example.com", "https://your-relay.example.com"]
     /// claude CLI 原始路径(用户的 claude 是 alias,Terminal 非交互环境必须用原始路径)
     private let claudeBin = "/opt/homebrew/bin/claude"
+    /// 版本号:每次更新菜单栏都改这里,显示在状态行,方便确认软件真的更新了。
+    private let appVersion = "0.1.6 · 0619d(配对合并+设备区分)"
 
     private var earpieceDir: String { NSHomeDirectory() + "/.earpiece" }
 
@@ -46,8 +48,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let statusMenuItem = NSMenuItem(title: L("连接:检查中…", "Status: checking…"), action: nil, keyEquivalent: "")
     private let codeMenuItem = NSMenuItem(title: L("配对码:— — —", "Pair code: — — —"), action: nil, keyEquivalent: "")
     private let devicesMenuItem = NSMenuItem(title: L("已绑定:— 台手机", "Paired phones: —"), action: nil, keyEquivalent: "")
-    private let refreshCodeItem = NSMenuItem(title: L("绑定新手机(出一个新码)", "Pair a new phone (new code)"), action: #selector(refreshPairCode), keyEquivalent: "")
-    private let pairWindowItem = NSMenuItem(title: L("显示配对二维码", "Show pairing QR code"), action: #selector(showPairWindow), keyEquivalent: "")
+    private let pairMenuItem = NSMenuItem(title: L("绑定新手机…", "Pair a new phone…"), action: #selector(showPairWindow), keyEquivalent: "")
     private let resumeMenuItem = NSMenuItem(title: L("在终端继续", "Continue in Terminal"), action: nil, keyEquivalent: "")
     private let startMenuItem = NSMenuItem(title: L("启动后台 daemon", "Start daemon"), action: #selector(startDaemon), keyEquivalent: "")
     private let stopMenuItem = NSMenuItem(title: L("停止后台 daemon", "Stop daemon"), action: #selector(stopDaemon), keyEquivalent: "")
@@ -78,14 +79,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusMenuItem.isEnabled = false
         codeMenuItem.isEnabled = false
         menu.addItem(statusMenuItem)
-        menu.addItem(codeMenuItem)
         devicesMenuItem.isEnabled = false
         menu.addItem(devicesMenuItem)
         menu.addItem(.separator())
-        refreshCodeItem.target = self
-        pairWindowItem.target = self
-        menu.addItem(refreshCodeItem)
-        menu.addItem(pairWindowItem)
+        pairMenuItem.target = self
+        menu.addItem(pairMenuItem)
         menu.addItem(.separator())
         menu.addItem(resumeMenuItem)
         menu.addItem(.separator())
@@ -243,7 +241,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func applyStatus(running: Bool) {
         daemonRunning = running
-        statusMenuItem.title = running ? L("连接:运行中 ✓", "Status: running ✓") : L("连接:未运行", "Status: not running")
+        statusMenuItem.title = running ? L("连接:运行中 ✓ · v\(appVersion)", "Status: running ✓ · v\(appVersion)") : L("连接:未运行 · v\(appVersion)", "Status: not running · v\(appVersion)")
         startMenuItem.isEnabled = !running
         stopMenuItem.isEnabled = running
         pollDevices()
@@ -264,16 +262,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 if n == 0 {
                     self.devicesMenuItem.title = L("还没绑定手机 — 让手机扫下面的码", "No phones paired — scan the code below")
                     self.devicesMenuItem.submenu = nil
+                    self.devicesMenuItem.isEnabled = false
                     return
                 }
-                self.devicesMenuItem.title = L("已绑定:\(n) 台手机", "Paired phones: \(n)")
-                guard !list.isEmpty else { self.devicesMenuItem.submenu = nil; return }  // 旧中继无名字
+                self.devicesMenuItem.title = L("已绑定:\(n) 台手机 ▸", "Paired phones: \(n) ▸")
+                // 旧中继只给数量、没名字 → 无可解绑子菜单,保持禁用纯文字
+                guard !list.isEmpty else {
+                    self.devicesMenuItem.submenu = nil
+                    self.devicesMenuItem.isEnabled = false
+                    return
+                }
                 let sub = NSMenu()
                 sub.autoenablesItems = false
                 for d in list {
                     let full = (d["name"] as? String) ?? "?"
                     let ts = (d["lastSeen"] as? Double) ?? 0
-                    let item = NSMenuItem(title: "📱 \(self.shortDeviceName(full))  ·  \(self.relTime(ts))   ✕",
+                    let suffix = self.deviceSuffix(full)
+                    let idPart = suffix.isEmpty ? "" : " (\(suffix))"
+                    let item = NSMenuItem(title: "📱 \(self.shortDeviceName(full))\(idPart)  ·  \(self.relTime(ts))   ✕",
                                           action: #selector(self.unbindTapped(_:)), keyEquivalent: "")
                     item.target = self
                     item.representedObject = full
@@ -281,6 +287,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     sub.addItem(item)
                 }
                 self.devicesMenuItem.submenu = sub
+                self.devicesMenuItem.isEnabled = true   // 必须可用,鼠标才能移进去打开解绑子菜单
             }
         }.resume()
     }
@@ -288,6 +295,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // 设备名形如 "Miles 的 iPhone·1a2b3c4d",显示时去掉 ·后缀
     private func shortDeviceName(_ s: String) -> String {
         s.split(separator: "·").first.map(String.init) ?? s
+    }
+    // ·后缀(vendorID 前8位)——两台同名手机靠它区分
+    private func deviceSuffix(_ s: String) -> String {
+        let parts = s.split(separator: "·", maxSplits: 1)
+        return parts.count > 1 ? String(parts[1]) : ""
     }
     // 毫秒时间戳 → "刚刚 / N 分钟前 / N 小时前 / N 天前"
     private func relTime(_ ms: Double) -> String {
