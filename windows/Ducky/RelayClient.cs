@@ -90,6 +90,22 @@ public sealed class RelayClient
         }
         catch { return null; }
     }
+
+    /// <summary>解绑一台手机:从中继账户设备列表删掉这个名字。成功回 true。</summary>
+    public static async Task<bool> UnbindAsync(string device, CancellationToken ct = default)
+    {
+        try
+        {
+            var relay = Config.PrimaryRelay().TrimEnd('/');
+            var key = Config.ResolveAccountKey();
+            using var req = new HttpRequestMessage(HttpMethod.Post, $"{relay}/device/unbind");
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
+            req.Content = new StringContent(new JsonObject { ["device"] = device }.ToJsonString(), Encoding.UTF8, "application/json");
+            using var resp = await Http.SendAsync(req, ct);
+            return resp.IsSuccessStatusCode;
+        }
+        catch { return false; }
+    }
 }
 
 /// <summary>本账户绑定的一台手机:配对时报的 UIDevice.name·设备ID 与最后在线毫秒时间戳。</summary>

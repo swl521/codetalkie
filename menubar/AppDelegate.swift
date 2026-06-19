@@ -249,7 +249,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         pollDevices()
     }
 
-    // 向中继查这个账户绑了几台手机(/status 的 devices 字段)
+    // 向中继查这个账户绑了哪些手机(/status 的 deviceList:[{name,lastSeen}];旧中继只有 devices 计数)
     private func pollDevices() {
         guard let relay = primaryRelay(), let key = readAccountKey(),
               let url = URL(string: relay + "/status") else { return }
@@ -258,10 +258,70 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         URLSession.shared.dataTask(with: req) { [weak self] data, _, _ in
             guard let self, let data,
                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
-            let n = obj["devices"] as? Int ?? 0
+            let list = (obj["deviceList"] as? [[String: Any]]) ?? []
+            let n = list.isEmpty ? (obj["devices"] as? Int ?? 0) : list.count
             DispatchQueue.main.async {
-                self.devicesMenuItem.title = n > 0 ? L("已绑定:\(n) 台手机", "Paired phones: \(n)") : L("还没绑定手机 — 让手机扫下面的码", "No phones paired — scan the code below")
+                if n == 0 {
+                    self.devicesMenuItem.title = L("还没绑定手机 — 让手机扫下面的码", "No phones paired — scan the code below")
+                    self.devicesMenuItem.submenu = nil
+                    return
+                }
+                self.devicesMenuItem.title = L("已绑定:\(n) 台手机", "Paired phones: \(n)")
+                guard !list.isEmpty else { self.devicesMenuItem.submenu = nil; return }  // 旧中继无名字
+                let sub = NSMenu()
+                sub.autoenablesItems = false
+                for d in list {
+                    let full = (d["name"] as? String) ?? "?"
+                    let ts = (d["lastSeen"] as? Double) ?? 0
+                    let item = NSMenuItem(title: "📱 \(self.shortDeviceName(full))  ·  \(self.relTime(ts))   ✕",
+                                          action: #selector(self.unbindTapped(_:)), keyEquivalent: "")
+                    item.target = self
+                    item.representedObject = full
+                    item.toolTip = L("点击解绑这台手机", "Click to unbind this phone")
+                    sub.addItem(item)
+                }
+                self.devicesMenuItem.submenu = sub
             }
+        }.resume()
+    }
+
+    // 设备名形如 "Miles 的 iPhone·1a2b3c4d",显示时去掉 ·后缀
+    private func shortDeviceName(_ s: String) -> String {
+        s.split(separator: "·").first.map(String.init) ?? s
+    }
+    // 毫秒时间戳 → "刚刚 / N 分钟前 / N 小时前 / N 天前"
+    private func relTime(_ ms: Double) -> String {
+        guard ms > 0 else { return L("未知", "unknown") }
+        let sec = Int(Date().timeIntervalSince1970 - ms / 1000)
+        if sec < 60 { return L("刚刚", "just now") }
+        if sec < 3600 { return L("\(sec/60) 分钟前", "\(sec/60)m ago") }
+        if sec < 86400 { return L("\(sec/3600) 小时前", "\(sec/3600)h ago") }
+        return L("\(sec/86400) 天前", "\(sec/86400)d ago")
+    }
+
+    // 点设备项 → 确认 → 解绑
+    @objc private func unbindTapped(_ sender: NSMenuItem) {
+        guard let name = sender.representedObject as? String else { return }
+        let alert = NSAlert()
+        alert.messageText = L("解绑「\(shortDeviceName(name))」?", "Unbind “\(shortDeviceName(name))”?")
+        alert.informativeText = L("它将不再收到播报和批准。", "It will stop receiving broadcasts and approvals.")
+        alert.addButton(withTitle: L("解绑", "Unbind"))
+        alert.addButton(withTitle: L("取消", "Cancel"))
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        unbindDevice(name)
+    }
+
+    private func unbindDevice(_ name: String) {
+        guard let relay = primaryRelay(), let key = readAccountKey(),
+              let url = URL(string: relay + "/device/unbind") else { return }
+        var req = URLRequest(url: url, timeoutInterval: 8)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["device": name])
+        URLSession.shared.dataTask(with: req) { [weak self] _, _, _ in
+            DispatchQueue.main.async { self?.pollDevices() }
         }.resume()
     }
 

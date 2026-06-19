@@ -112,7 +112,24 @@ public sealed class TrayController : IDisposable
         {
             _devicesItem.Text = Loc.L($"已绑定:{devices.Count} 台手机", $"Paired phones: {devices.Count}");
             foreach (var d in devices)
-                _devicesItem.DropDownItems.Add(new ToolStripMenuItem($"📱 {ShortName(d.Name)}  ·  {RelTime(d.LastSeen)}") { Enabled = false });
+            {
+                var name = d.Name;
+                var it = new ToolStripMenuItem($"📱 {ShortName(name)}  ·  {RelTime(d.LastSeen)}   ✕")
+                {
+                    ToolTipText = Loc.L("点击解绑这台手机", "Click to unbind this phone")
+                };
+                it.Click += async (_, _) =>
+                {
+                    var yes = MessageBox.Show(
+                        Loc.L($"解绑「{ShortName(name)}」?它将不再收到播报和批准。", $"Unbind \"{ShortName(name)}\"? It will stop receiving broadcasts and approvals."),
+                        Loc.L("解绑手机", "Unbind phone"),
+                        MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes;
+                    if (!yes) return;
+                    await RelayClient.UnbindAsync(name);
+                    await RefreshStatusAsync();
+                };
+                _devicesItem.DropDownItems.Add(it);
+            }
         }
     }
 

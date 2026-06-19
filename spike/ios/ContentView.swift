@@ -568,6 +568,13 @@ struct HomeView: View {
     }
 }
 
+// 本账户绑定的手机(中继 /status 的 deviceList)
+struct BoundDevice: Identifiable {
+    var id: String { name }
+    let name: String
+    let lastSeen: Double
+}
+
 // ── 设置页:播报级别 + 名字 + 连接 + Siri + 开发者 ──
 
 struct SettingsView: View {
@@ -580,6 +587,7 @@ struct SettingsView: View {
     @AppStorage("accountKey") private var accountKey = ""       // 绑定电脑后的账户密钥
     @State private var pairCode = ""
     @State private var showScanner = false
+    @State private var boundDevices: [BoundDevice] = []   // 本账户绑定的手机(中继 /status deviceList)
     @FocusState private var codeFocused: Bool
 
     // 二维码内容 codetalkie://pair?code=XXXXXX → 取 6 位码;也兼容直接是 6 位数字。
@@ -655,6 +663,24 @@ struct SettingsView: View {
                         }
                     }
                     if !pairMsg.isEmpty { Text(pairMsg).font(.caption).foregroundStyle(pairMsg.hasPrefix("✅") ? .green : .red) }
+                }
+                if !boundDevices.isEmpty {
+                    Section(String(localized: "已绑定的手机")) {
+                        ForEach(boundDevices) { d in
+                            HStack {
+                                Label(shortDeviceName(d.name), systemImage: "iphone")
+                                Spacer()
+                                Text(relTime(d.lastSeen)).font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                        .onDelete { idx in
+                            let names = idx.map { boundDevices[$0].name }
+                            boundDevices.remove(atOffsets: idx)   // 乐观移除
+                            Task { for n in names { await unbindDevice(n) }; await loadBoundDevices() }
+                        }
+                        Text(String(localized: "本账户绑定的手机(都会收到播报和批准)· 左滑解绑"))
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
                 }
                 Section("播报") {
                     VStack(alignment: .leading, spacing: 4) {
@@ -764,6 +790,12 @@ struct SettingsView: View {
             }
             .navigationTitle("设置")
             .navigationBarTitleDisplayMode(.inline)
+            .task {
+                while !Task.isCancelled {
+                    await loadBoundDevices()
+                    try? await Task.sleep(nanoseconds: 8_000_000_000)
+                }
+            }
             .toolbar {
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
@@ -788,6 +820,31 @@ struct SettingsView: View {
         Task {
             _ = try? await URLSession.shared.data(for: API.request("/settings", method: "POST", body: ["level": Int(announceLevel)]))
         }
+    }
+
+    // 拉本账户绑定的手机(中继 /status deviceList)
+    private func loadBoundDevices() async {
+        guard let json = await API.json("/status") as? [String: Any],
+              let arr = json["deviceList"] as? [[String: Any]] else { return }
+        let next = arr.map { BoundDevice(name: $0["name"] as? String ?? "?", lastSeen: $0["lastSeen"] as? Double ?? 0) }
+        await MainActor.run { boundDevices = next }
+    }
+    // 解绑一台手机(从中继账户设备列表删掉)
+    private func unbindDevice(_ name: String) async {
+        _ = try? await URLSession.shared.data(for: API.request("/device/unbind", method: "POST", body: ["device": name]))
+    }
+    // 设备名 "Miles 的 iPhone·1a2b3c4d" → 去掉 ·后缀
+    private func shortDeviceName(_ s: String) -> String {
+        s.split(separator: "·").first.map(String.init) ?? s
+    }
+    // 毫秒时间戳 → 相对时间
+    private func relTime(_ ms: Double) -> String {
+        guard ms > 0 else { return String(localized: "未知") }
+        let sec = Int(Date().timeIntervalSince1970 - ms / 1000)
+        if sec < 60 { return String(localized: "刚刚") }
+        if sec < 3600 { return String(localized: "\(sec/60) 分钟前") }
+        if sec < 86400 { return String(localized: "\(sec/3600) 小时前") }
+        return String(localized: "\(sec/86400) 天前")
     }
 
     // 配对认领:凭 6 位码向中继换账户密钥(免鉴权)。配对码只在电脑发码的那个中继上,逐个试。
