@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { postSend, readResponse, pollResponse } from '../src/transport.js';
+import { postSend, readResponse, pollResponse, postAnnounce } from '../src/transport.js';
 
 test('postSend: 用注入的 fetch 发到 /send', async () => {
   let captured;
@@ -32,4 +32,14 @@ test('pollResponse: 超时返回 timeout', async () => {
   let t = 0;
   const r = await pollResponse('absent', { dir, timeoutMs: 10, intervalMs: 5, sleep: async () => { t += 5; }, now: () => t });
   assert.equal(r.status, 'timeout');
+});
+
+test('postAnnounce: POST 到 daemon /announce 带 text/level', async () => {
+  let captured;
+  const fakeFetch = async (url, opts) => { captured = { url, body: JSON.parse(opts.body) }; return { status: 202, json: async () => ({ announced: true }) }; };
+  const r = await postAnnounce(7780, '第3步完成', 3, { fetchImpl: fakeFetch });
+  assert.equal(r.status, 202);
+  assert.equal(captured.url, 'http://127.0.0.1:7780/announce');
+  assert.equal(captured.body.text, '第3步完成');
+  assert.equal(captured.body.level, 3);
 });

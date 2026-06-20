@@ -33,8 +33,15 @@ export function normalizeCodexMessage(msg) {
       return [];
     }
 
-    case 'turn.completed':
-      return [{ type: EVENT.TASK_FINISHED, text: '' }];
+    case 'turn.completed': {
+      const ev = { type: EVENT.TASK_FINISHED, text: '' };
+      const u = msg.usage;
+      if (u) {
+        const t = (u.input_tokens ?? 0) + (u.output_tokens ?? 0);
+        ev.tokens = t || u.total_tokens || undefined;
+      }
+      return [ev];
+    }
 
     case 'turn.failed':
       return [{ type: EVENT.TASK_FAILED, text: msg.error?.message ?? 'unknown' }];

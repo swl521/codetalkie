@@ -375,17 +375,22 @@ struct HomeView: View {
         .padding(.vertical, 6)
     }
 
-    // 两级分组:引擎(Claude/Codex)→ 机器(Mac/Win…)
+    // 两级分组:引擎(Claude/Codex)→ 机器(Mac/Win…);🧠 主脑置顶
     private var projectsCard: some View {
         VStack(alignment: .leading, spacing: 6) {
             if registry.isEmpty {
                 Text("正在从电脑读取项目…").font(.caption).foregroundStyle(.secondary)
             }
-            ForEach(["claude", "codex", "hermes"], id: \.self) { agent in
-                let group = registry.filter { $0.agent == agent }
+            // 「🧠 主脑」置顶:独立渲染在所有引擎分组之上
+            if let leader = registry.first(where: { $0.name == "🧠主脑" }) {
+                projectRow(leader)
+                Divider().padding(.vertical, 2)
+            }
+            ForEach(["claude", "codex", "hermes", "cowork"], id: \.self) { agent in
+                let group = registry.filter { $0.agent == agent && $0.name != "🧠主脑" }
                 if !group.isEmpty {
-                    let accent: Color = agent == "claude" ? .orange : agent == "codex" ? .green : .purple
-                    let label = agent == "claude" ? "Claude" : agent == "codex" ? "Codex" : "Hermes"
+                    let accent: Color = agent == "claude" ? .orange : agent == "codex" ? .green : agent == "hermes" ? .purple : .teal
+                    let label = agent == "claude" ? "Claude" : agent == "codex" ? "Codex" : agent == "hermes" ? "Hermes" : "Cowork"
                     let isCollapsed = collapsed.contains(agent)
                     // 引擎标题:整行可点,折叠/展开这一组
                     Button {

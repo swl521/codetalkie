@@ -31,13 +31,13 @@ test('Codex rollout 格式 + limit 截断 + 长文截短', () => {
   const f = tmpFile([
     { type: 'session_meta', payload: { cwd: '/x' } },
     { type: 'response_item', payload: { role: 'user', content: [{ type: 'input_text', text: '修一下登录' }] } },
-    { type: 'response_item', payload: { role: 'assistant', content: [{ type: 'output_text', text: '改'.repeat(300) }] } },
+    { type: 'response_item', payload: { role: 'assistant', content: [{ type: 'output_text', text: '改'.repeat(3000) }] } },
     { type: 'response_item', payload: { role: 'assistant', content: [{ type: 'output_text', text: '修好了' }] } },
   ]);
   const out = extractTail(f, 2);
   assert.equal(out.length, 2);
   assert.equal(out[0].role, 'assistant');
-  assert.equal(out[0].text.length, 200);
+  assert.equal(out[0].text.length, 2000); // 每行上限 2000(0cb38c3:长消息在手机显示全),超出截短并补 …
   assert.ok(out[0].text.endsWith('…'));
   assert.deepEqual(out[1], { role: 'assistant', text: '修好了' });
 });

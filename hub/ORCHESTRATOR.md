@@ -62,6 +62,13 @@ echo "job_id: $JOB"
 
 重规划轮数上限：**maxDepth = 5**（来自 `hub/config/policy.default.json`）。超出则停止并上报。
 
+**计划成形后，念一次进度到耳机：**
+
+```bash
+STEP_COUNT=$(echo "$PLAN" | jq 'length')  # 计算步骤总数
+node hub/bin/hub.js announce "开始编排:共 $STEP_COUNT 步"
+```
+
 ---
 
 ## 4. 派活
@@ -105,6 +112,15 @@ echo "$RESULT"
 | `artifacts` | 产物路径/链接列表 |
 | `next` | worker 建议的后续步骤（主脑可选择采纳） |
 | `needsApproval` | 非空时见第 7 节 |
+
+**每步 poll 到结果后，念一次里程碑到耳机：**
+
+```bash
+# 从 RESULT 解析 summary
+STEP_SUMMARY=$(echo "$RESULT" | jq -r '.summary // "未知结果"')
+# 在派活循环里,k 为当前步号(从 1 起)
+node hub/bin/hub.js announce "第 $k 步完成:$STEP_SUMMARY"
+```
 
 ---
 
@@ -163,15 +179,15 @@ fi
 所有步骤完成后：
 
 1. **聚合摘要**：把各步 `result.summary` 拼合为一段话。
-2. **念到耳机**：走 relay push 推送聚合摘要（详见 `docs/DEPLOY.md`）。
+2. **念到耳机**：用 `hub announce` 念聚合摘要。
 3. **深度检查**：统计本次重规划轮数，若已达 `maxDepth = 5`，停止并上报。
 
 ```bash
 # 聚合各步摘要示例
 FULL_SUMMARY="Job $JOB 完成。步骤1: $SUMMARY1。步骤2: $SUMMARY2。"
 
-# 推送到耳机（relay push，具体接口见 docs/DEPLOY.md）
-# curl -X POST http://<relay>/push -d "{\"text\":\"$FULL_SUMMARY\"}"
+# 念到耳机
+node hub/bin/hub.js announce "全部完成:$FULL_SUMMARY"
 
 echo "编排完成: $FULL_SUMMARY"
 ```

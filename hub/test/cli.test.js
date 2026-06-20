@@ -45,3 +45,9 @@ test('register: --pid 被采纳', () => {
   const reg = JSON.parse(readFileSync(pjoin(home, '.claude/agent-hub/registry.json'), 'utf-8'));
   assert.equal(reg.sessions.wp.pid, 424242);
 });
+
+test('announce: 坏端口被吞,仍返回含文本的提示(不抛)', async () => {
+  const { run } = await import('../src/cli.js');
+  const out = await run(['announce', '冒烟一句', '--port', '65000']);
+  assert.match(out, /冒烟一句/);
+});

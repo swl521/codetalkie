@@ -10,6 +10,8 @@ struct ChatLine: Identifiable, Equatable {
     let text: String
     let ts: Double
     var src: String? = nil // "seed"=电脑回填(不念);nil/其他=实时播报
+    var statsTokens: Int? = nil
+    var statsDurationMs: Int? = nil
 }
 
 // 时间戳格式化:今天只显示 HH:mm;不是今天显示 月/日 HH:mm —— 让你一眼看出是不是昨天的。
@@ -165,6 +167,13 @@ struct ChatView: View {
                         .padding(10)
                         .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
                     if !stamp.isEmpty { Text(stamp).font(.caption2).foregroundStyle(.tertiary) }
+                    if let ms = line.statsDurationMs {
+                        let secs = max(1, ms / 1000)
+                        let tok = line.statsTokens.map { " · \($0) tokens" } ?? ""
+                        Text("\(secs) 秒\(tok)")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 Spacer(minLength: 48)
             }.id(line.id)
@@ -250,12 +259,15 @@ struct ChatView: View {
         // relay 按"插入顺序"返回(seed 段在前、live 行在后),不是时间序。
         // 必须按 ts 排,否则最新的回填内容会被压在旧 live 行上面,看着像"卡住没更新"。
         let sorted = arr.map { o in
-            ChatLine(id: 0, role: o["role"] as? String ?? "assistant",
+            let stats = o["stats"] as? [String: Any]
+            return ChatLine(id: 0, role: o["role"] as? String ?? "assistant",
                      text: o["text"] as? String ?? "", ts: o["ts"] as? Double ?? 0,
-                     src: o["src"] as? String)
+                     src: o["src"] as? String,
+                     statsTokens: stats?["tokens"] as? Int,
+                     statsDurationMs: stats?["durationMs"] as? Int)
         }
         .sorted { $0.ts < $1.ts }
-        .enumerated().map { i, l in ChatLine(id: i, role: l.role, text: l.text, ts: l.ts, src: l.src) }
+        .enumerated().map { i, l in ChatLine(id: i, role: l.role, text: l.text, ts: l.ts, src: l.src, statsTokens: l.statsTokens, statsDurationMs: l.statsDurationMs) }
         lines = sorted
         // 播报由 BroadcastService 统一轮询订阅项目来念(前台+后台),这里不再单独念。
     }

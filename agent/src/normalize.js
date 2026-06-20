@@ -31,10 +31,12 @@ export function normalizeClaudeMessage(msg) {
       return out;
     }
 
-    case 'result':
-      return msg.subtype === 'success'
-        ? [{ type: EVENT.TASK_FINISHED, text: typeof msg.result === 'string' ? msg.result : '' }]
-        : [{ type: EVENT.TASK_FAILED, text: msg.subtype ?? 'unknown' }];
+    case 'result': {
+      if (msg.subtype !== 'success') return [{ type: EVENT.TASK_FAILED, text: msg.subtype ?? 'unknown' }];
+      const ev = { type: EVENT.TASK_FINISHED, text: typeof msg.result === 'string' ? msg.result : '' };
+      if (msg.usage) ev.tokens = (msg.usage.input_tokens ?? 0) + (msg.usage.output_tokens ?? 0);
+      return [ev];
+    }
 
     default:
       return [];

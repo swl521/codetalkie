@@ -92,7 +92,7 @@ public sealed class TrayController : IDisposable
     }
 
     // 每次改动都 bump,用户靠它确认软件真的更新了
-    private const string AppVersion = "0.1.6 · 0619d";
+    private const string AppVersion = "0.1.7 · 0620a(stats+主脑+cowork)";
 
     private async Task RefreshStatusAsync()
     {

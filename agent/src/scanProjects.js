@@ -70,6 +70,54 @@ export function scanClaude(root = join(homedir(), '.claude', 'projects')) {
   }));
 }
 
+// Cowork(Claude 桌面版 local agent mode):会话元数据存
+// ~/Library/Application Support/Claude/local-agent-mode-sessions/<a>/<b>/local_*.json,
+// 含 title/cwd/sessionId/lastActivityAt/initialMessage。完整对话在云端 IndexedDB(本地没有),只取标题+开场白。
+export function parseCoworkSession(o, file) {
+  if (!o || !o.title) return null;
+  return {
+    name: o.title,
+    cwd: o.cwd || '',
+    agent: 'cowork',
+    base: o.title,
+    lastActive: o.lastActivityAt ?? o.createdAt ?? 0,
+    file,
+    sessionId: o.sessionId || o.cliSessionId || null,
+    preview: typeof o.initialMessage === 'string' ? o.initialMessage : '',
+  };
+}
+
+// Cowork 数据目录按平台:macOS=~/Library/Application Support、Windows=%APPDATA%\Claude、Linux=~/.config/Claude
+export function coworkBase() {
+  const home = homedir();
+  if (process.platform === 'darwin') return join(home, 'Library', 'Application Support', 'Claude', 'local-agent-mode-sessions');
+  if (process.platform === 'win32') return join(process.env.APPDATA || join(home, 'AppData', 'Roaming'), 'Claude', 'local-agent-mode-sessions');
+  return join(home, '.config', 'Claude', 'local-agent-mode-sessions');
+}
+
+export function scanCowork(base = coworkBase()) {
+  const out = new Map(); // sessionId(或路径) → entry,去重取最新
+  const walk = (dir) => {
+    let ents = [];
+    try { ents = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of ents) {
+      const p = join(dir, e.name);
+      if (e.isDirectory()) {
+        if (e.name === 'agent') continue; // agent/ 下是重复的 ditto 元数据,跳过免重复
+        walk(p);
+      } else if (e.name.startsWith('local_') && !e.name.startsWith('local_ditto') && e.name.endsWith('.json')) {
+        let o; try { o = JSON.parse(readFileSync(p, 'utf8')); } catch { continue; }
+        const entry = parseCoworkSession(o, p);
+        if (!entry) continue;
+        const key = entry.sessionId || p;
+        if (!out.has(key) || out.get(key).lastActive < entry.lastActive) out.set(key, entry);
+      }
+    }
+  };
+  walk(base);
+  return [...out.values()];
+}
+
 // Codex:~/.codex/sessions/<年>/<月>/<日>/rollout-*.jsonl,首行 session_meta 含 cwd
 export function scanCodex(root = join(homedir(), '.codex', 'sessions'), maxFiles = 80) {
   const files = [];

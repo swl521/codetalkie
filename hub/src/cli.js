@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { readRegistry, listSessions, HUB_DIR, REGISTRY_FILE } from './registry.js';
 import { mintId, buildSendBody, normalizeResult } from './protocol.js';
-import { postSend, pollResponse, readResponse, RESPONSES_DIR } from './transport.js';
+import { postSend, pollResponse, readResponse, RESPONSES_DIR, postAnnounce } from './transport.js';
 import { readLeader, writeLeader } from './leader.js';
 
 // 极简 arg 解析:第一个非 -- 的是 cmd,其余非 -- 的是 positionals;--k v 进 flags,--k(后接 -- 或结尾)= true。
@@ -94,7 +94,14 @@ export async function run(argv, { now = () => new Date().toISOString() } = {}) {
       writeFileSync(join(dir, `${jobId}.json`), JSON.stringify({ job_id: jobId, question, asked: now(), decision: null }, null, 2));
       return `已升级 ${jobId}(等手机回 decisions/${jobId}.json)`;
     }
+    case 'announce': {
+      const [text] = positionals;
+      const port = Number(flags.port) || 7780;
+      const level = flags.level != null ? Number(flags.level) : undefined;
+      await postAnnounce(port, text, level).catch(() => {});
+      return `已念: ${text}`;
+    }
     default:
-      return 'hub <list|send|poll|reply|register|leader|escalate> ...';
+      return 'hub <list|send|poll|reply|register|leader|escalate|announce> ...';
   }
 }

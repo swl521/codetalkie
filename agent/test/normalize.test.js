@@ -45,3 +45,15 @@ test('空文字块、未知类型 → 忽略', () => {
   assert.deepEqual(normalizeClaudeMessage({ type: 'assistant', message: { content: [{ type: 'text', text: '  ' }] } }), []);
   assert.deepEqual(normalizeClaudeMessage({ type: 'whatever' }), []);
 });
+
+test('result success 带 usage → task.finished.tokens = 输入+输出', () => {
+  const out = normalizeClaudeMessage({ type: 'result', subtype: 'success', result: '好了', usage: { input_tokens: 100, output_tokens: 200 } });
+  assert.equal(out[0].type, EVENT.TASK_FINISHED);
+  assert.equal(out[0].tokens, 300);
+});
+
+test('result success 无 usage → 无 tokens', () => {
+  const out = normalizeClaudeMessage({ type: 'result', subtype: 'success', result: '好了' });
+  assert.equal(out[0].type, EVENT.TASK_FINISHED);
+  assert.equal(out[0].tokens, undefined);
+});

@@ -56,12 +56,15 @@ export async function runViaHub(job, hub, {
     let parsed;
     try { parsed = JSON.parse(readFileSync(resFile, 'utf8')); } catch { continue; } // 半写状态,下轮再读
     try { unlinkSync(resFile); } catch { /* 清不掉不碍事 */ }
-    const full = String(parsed.result ?? '').trim() || t('windowEmptyReply');
+    const rawResult = parsed.result;
+    const full = ((rawResult && typeof rawResult === 'object')
+      ? String(rawResult.summary ?? JSON.stringify(rawResult)).trim()
+      : String(rawResult ?? '').trim()) || t('windowEmptyReply');
     // 念耳机 = 精简版(窗口按真实回复压成一两句);进线程 = 全文(复盘看)。
     // 窗口没给 spoken 就退回念全文。播报由此与窗口内容联动,而不是另生成一套。
     const spoken = String(parsed.spoken ?? '').trim() || full;
     notify({ project: job.project, text: spoken });
-    logLine({ project: job.project, role: 'assistant', text: full });
+    logLine({ project: job.project, role: 'assistant', text: full, stats: { durationMs: Date.now() - t0 } });
     return true;
   }
   // 超时:终端可能还在忙(长任务/排队),不退无头 —— 注入的指令仍会被执行,重复跑会干两遍活

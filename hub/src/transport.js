@@ -32,3 +32,14 @@ export async function pollResponse(msgId, {
     await sleep(intervalMs);
   }
 }
+
+export async function postAnnounce(port, text, level, { host = '127.0.0.1', fetchImpl = fetch } = {}) {
+  const body = { text };
+  if (level != null) body.level = level;
+  const res = await fetchImpl(`http://${host}:${port}/announce`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return { status: res.status, data: await res.json().catch(() => ({})) };
+}

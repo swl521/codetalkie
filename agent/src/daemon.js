@@ -10,13 +10,17 @@ import { homedir, hostname, networkInterfaces } from 'node:os';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { runTask } from './runTask.js';
+import { routeLeaderGoal, LEADER_NAME } from './leaderGoal.js';
 import { summarizeToolRequest } from './translate.js';
 import { t } from './i18n.js';
 import { speak } from './speaker.js';
 import { buildPayload, sendPush } from './apns.js';
-import { scanClaude, scanCodex, scanHermesSessions, scanHubWindows, exportHermesSession, parseHermesHistory } from './scanProjects.js';
+import { scanClaude, scanCodex, scanHermesSessions, scanHubWindows, scanCowork, exportHermesSession, parseHermesHistory } from './scanProjects.js';
 import { buildRegistry, resolveSpoken, saveAlias, loadAliases } from './registry.js';
 import { findHubSession, runViaHub } from './hubBridge.js';
+import { readLeader } from '../../hub/src/leader.js';
+import { listSessions, readRegistry as readHubRegistry } from '../../hub/src/registry.js';
+import { postSend as hubPostSend } from '../../hub/src/transport.js';
 import { resolveAccountKey } from './account.js';
 import { extractTail } from './transcriptTail.js';
 
@@ -29,6 +33,10 @@ export function createDaemon({
   notify = () => {}, // 系统提示音(如重名拒绝):({project, text})
   resolver = null,   // 语音解析(text)→job|{ambiguous}|null;不传则用 projects 映射表
   projectForCwd = () => null, // cwd→项目名:终端 hook 批准时 current 为空,按目录归属到对应项目
+  leaderRead = () => null,    // ()→{engine,leader}|null;主脑配置读取
+  hubSend = async () => {},   // (name,cmd)→void;向 hub 窗口注入指令
+  codexPost = async () => {}, // (cmd)→void;向 Codex 守护发任务
+  hubAlive = () => false,     // (name)→bool;hub 窗口存活检测
 }) {
   const queue = [];
   let current = null;
@@ -92,6 +100,19 @@ export function createDaemon({
 
   let currentResolver = resolver;
 
+  // 主脑目标分流:project === LEADER_NAME 时走 routeLeaderGoal,不入常规队列。
+  // try/catch 吞错,fire-and-forget 不能崩整个 daemon。
+  async function routeIfLeader(job) {
+    if (job.project !== LEADER_NAME) return false;
+    try {
+      await routeLeaderGoal(job.prompt, leaderRead(), { hubSend, codexPost, notify, hubAlive });
+    } catch (e) {
+      notify({ project: LEADER_NAME, text: `主脑派发出错: ${e.message}` });
+    }
+    logLine({ project: LEADER_NAME, role: 'user', text: job.prompt });
+    return true;
+  }
+
   // 入队一条文字指令(本地 HTTP 和公网 Relay 共用)。重名 → 不入队,语音+字幕提示改名。
   function enqueueText(text) {
     const job = parseCommand(text);
@@ -101,6 +122,7 @@ export function createDaemon({
       logLine({ project: job.ambiguous, role: 'event', text: `⚠️ ${msg}` });
       return job;
     }
+    if (job.project === LEADER_NAME) { routeIfLeader(job).catch(() => {}); return job; }
     queue.push(job);
     pump();
     logLine({ project: job.project, role: 'user', text: (job.agent === 'codex' ? '[codex] ' : '') + job.prompt });
@@ -130,6 +152,15 @@ export function createDaemon({
       const job = enqueueText(text);
       res.writeHead(202, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ queued: job.project, prompt: job.prompt }));
+      return;
+    }
+    if (req.method === 'POST' && req.url === '/announce') {
+      let parsed;
+      try { parsed = JSON.parse(body); } catch { res.writeHead(400); res.end('bad json'); return; }
+      const text = String(parsed.text ?? '').trim();
+      if (text) notify({ project: LEADER_NAME, text });
+      res.writeHead(202, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ announced: !!text }));
       return;
     }
     if (req.method === 'POST' && req.url === '/choice/request') {
@@ -204,7 +235,7 @@ export function createDaemon({
   }
 
   return {
-    handle, queueSize: () => queue.length, enqueueText, respondFromRelay, respondChoiceFromRelay,
+    handle, queueSize: () => queue.length, enqueueText, routeIfLeader, respondFromRelay, respondChoiceFromRelay,
     setResolver: (fn) => { currentResolver = fn; },
     // 手机端实时状态:在干什么、排几个、几个等批准(含摘要,供 App 内横幅直接批/拒)
     state: () => ({
@@ -404,7 +435,17 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     defaults: {
       ...defaults,
       // 每句播报顺手记进字幕(assistant 气泡)
-      onSpoken: (item) => logLine({ project: item.project, role: 'assistant', text: item.text }),
+      onSpoken: (item) => logLine({ project: item.project, role: 'assistant', text: item.text, stats: item.stats }),
+    },
+    leaderRead: () => readLeader(),
+    hubAlive: (name) => listSessions(readHubRegistry()).some((s) => s.name === name),
+    hubSend: async (name, cmd) => {
+      const s = listSessions(readHubRegistry()).find((x) => x.name === name);
+      if (s) await hubPostSend(s.port, { command: cmd, msg_id: randomBytes(4).toString('hex') }).catch(() => {});
+    },
+    codexPost: async (cmd) => {
+      const s = listSessions(readHubRegistry()).find((x) => x.engine === 'codex');
+      if (s) await hubPostSend(s.port, { command: cmd, msg_id: randomBytes(4).toString('hex') }).catch(() => {});
     },
   });
 
@@ -418,7 +459,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     // 磁盘扫出来的项目 + 正开着的实时终端窗口(agent-hub)。同 cwd 的窗口覆盖到对应项目上
     // (标记 live/pid/status,带上窗口的 sessionId),没有对应项目的窗口则单独成条 ——
     // 这样手机列表既有历史项目,也能看到"正开着的线程"。
-    const scanned = [...scanClaude(), ...scanCodex(), ...scanHermesSessions()];
+    const scanned = [...scanClaude(), ...scanCodex(), ...scanHermesSessions(), ...scanCowork()];
     const byCwd = new Map(scanned.map((e) => [`${e.agent}@${e.cwd}`, e]));
     for (const w of scanHubWindows()) {
       const hit = byCwd.get(`${w.agent}@${w.cwd}`);
@@ -431,6 +472,11 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
       }
     }
     registry = buildRegistry(scanned, loadAliases(aliasesPath));
+    // 持有主脑时,把「🧠 主脑」并进列表 → 手机可见、经既有项目路由投到本机
+    const ld = readLeader();
+    if (ld && ld.engine) {
+      registry.push({ name: '🧠主脑', cwd: process.cwd(), agent: ld.engine, base: '', lastActive: Date.now(), live: true });
+    }
     daemon.setResolver((text) => resolveSpoken(text, registry));
     if (relayConfig) {
       const body = JSON.stringify(registry.map(({ name, cwd, agent, base, lastActive, needsRename, aliased, sessionId, live, pid, status }) =>
@@ -501,6 +547,16 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
           const { sig: hsig, lines } = parseHermesHistory(obj, 50);
           if (seededMtime.get(e.name) === hsig) continue;
           seededMtime.set(e.name, hsig);
+          await pushHistory(e.name, lines);
+          continue;
+        }
+        // cowork:本地只有元数据(标题+开场白),完整对话在云端 → seed 一条说明 + 开场白
+        if (e.agent === 'cowork') {
+          const sig = `cowork:${e.lastActive}`;
+          if (seededMtime.get(e.name) === sig) continue;
+          seededMtime.set(e.name, sig);
+          const lines = [{ role: 'event', text: '↻ Cowork 会话(完整对话在云端,这里只存了开场白)' }];
+          if (e.preview) lines.push({ role: 'user', text: e.preview });
           await pushHistory(e.name, lines);
           continue;
         }

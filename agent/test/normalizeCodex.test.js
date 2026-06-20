@@ -40,7 +40,7 @@ test('item.completed 工具类 → tool.finished,status=failed 算失败;item.up
 
 test('turn.completed → task.finished;turn.failed / error → task.failed', () => {
   assert.deepEqual(normalizeCodexMessage({ type: 'turn.completed', usage: {} }),
-    [{ type: EVENT.TASK_FINISHED, text: '' }]);
+    [{ type: EVENT.TASK_FINISHED, text: '', tokens: undefined }]);
   assert.deepEqual(normalizeCodexMessage({ type: 'turn.failed', error: { message: 'boom' } }),
     [{ type: EVENT.TASK_FAILED, text: 'boom' }]);
   assert.deepEqual(normalizeCodexMessage({ type: 'error', message: 'fatal' }),
@@ -52,4 +52,16 @@ test('reasoning / todo_list / 未知类型 → 忽略', () => {
     type: 'item.completed', item: { id: 'r', type: 'reasoning', text: 'thinking...' },
   }), []);
   assert.deepEqual(normalizeCodexMessage({ type: 'whatever' }), []);
+});
+
+test('codex turn.completed 带 usage → task.finished.tokens', () => {
+  const out = normalizeCodexMessage({ type: 'turn.completed', usage: { input_tokens: 50, output_tokens: 70 } });
+  assert.equal(out[0].type, EVENT.TASK_FINISHED);
+  assert.equal(out[0].tokens, 120);
+});
+
+test('codex turn.completed 无 usage → 无 tokens', () => {
+  const out = normalizeCodexMessage({ type: 'turn.completed' });
+  assert.equal(out[0].type, EVENT.TASK_FINISHED);
+  assert.equal(out[0].tokens, undefined);
 });

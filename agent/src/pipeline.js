@@ -7,9 +7,11 @@ import { AnnounceQueue } from './queue.js';
 export class Pipeline {
   #toolNames = new Map(); // tool_use_id → 工具名
 
-  constructor({ project, level = 3, mergeThreshold = 3 } = {}) {
+  constructor({ project, level = 3, mergeThreshold = 3, now = () => Date.now() } = {}) {
     this.project = project;
     this.level = level;
+    this.now = now;
+    this.startMs = now();
     this.sm = new TaskStateMachine();
     this.queue = new AnnounceQueue({ mergeThreshold });
   }
@@ -28,10 +30,15 @@ export class Pipeline {
     if (!shouldAnnounce(event, this.level)) return;
     const text = toSpeech(event);
     if (!text) return;
-    this.queue.push({
+    const item = {
       project: this.project,
       text,
       urgent: isBaseline(event) || isBadNews(event),
-    });
+    };
+    if (event.type === EVENT.TASK_FINISHED) {
+      item.stats = { durationMs: this.now() - this.startMs };
+      if (event.tokens != null) item.stats.tokens = event.tokens;
+    }
+    this.queue.push(item);
   }
 }

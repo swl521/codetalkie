@@ -32,3 +32,24 @@ test('工具名通过 id 映射补全', () => {
   assert.equal(p.queue.next().text, '正在改文件');
   assert.equal(p.queue.next().text, '改文件完成');
 });
+
+test('TASK_FINISHED 入队 item 带 stats(tokens + durationMs)', () => {
+  let t = 1000;
+  const p = new Pipeline({ project: 'p', level: 5, now: () => t });
+  t = 6000;
+  p.ingest({ type: EVENT.TASK_FINISHED, text: '完成', tokens: 300 });
+  const item = p.queue.next();
+  assert.ok(item, '应有入队 item');
+  assert.equal(item.stats.tokens, 300);
+  assert.equal(item.stats.durationMs, 5000);
+});
+
+test('TASK_FINISHED 无 tokens → stats 只有 durationMs', () => {
+  let t = 0;
+  const p = new Pipeline({ project: 'p', level: 5, now: () => t });
+  t = 2000;
+  p.ingest({ type: EVENT.TASK_FINISHED, text: '完成' });
+  const item = p.queue.next();
+  assert.equal(item.stats.tokens, undefined);
+  assert.equal(item.stats.durationMs, 2000);
+});

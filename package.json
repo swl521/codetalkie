@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test agent/test/*.test.js hub/test/*.test.js"
+    "test": "node --test agent/test/*.test.js hub/test/*.test.js",
+    "dispatch": "node agent/src/dispatch.js"
   }
 }
