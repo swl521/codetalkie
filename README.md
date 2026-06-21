@@ -2,6 +2,11 @@
 
 **Your AI coding agent reports progress into your AirPods, and you command it by voice or a phone tap — screen-free.** One phone drives many computers (macOS · Windows · Linux), with apps for **iOS and Android**.
 
+**▶️ 30-second demo:** [English](https://github.com/swl521/codetalkie/releases/download/v0.1.7/codetalkie-demo-30s-en.mp4) · [中文](https://github.com/swl521/codetalkie/releases/download/v0.1.7/codetalkie-demo-30s-cn.mp4)
+
+*Tired of babysitting `claude` / `codex` in the terminal — stuck near the keyboard waiting to approve every prompt? Put on your AirPods and walk away. Codetalkie reads each step aloud and lets you approve by voice.*
+*(厌倦了守着终端等 `claude` / `codex` 问"要不要继续"?戴上耳机走开 —— 每步念给你听,危险操作语音批准。)*
+
 > Phone locked in your pocket, you're out for a run. Say *"wiki, run the tests"* — the AI agent on your computer starts working; each step is turned into plain speech and read into your AirPods by Siri; when it needs to delete a file it asks *"Approve?"* — you say *"approve"* (or tap the notification), and it continues. The phone never leaves your pocket.
 >
 > Think of it as a dispatcher on a trucker's radio for your coding agent. Works with **Claude Code**, **OpenAI Codex**, and Hermes.
